@@ -1,29 +1,36 @@
 @page "/"
 @rendermode InteractiveServer
-@inject TokenStore Tokens
+@inject SpotifyAuthService Auth
 @inject PlaylistLoader Loader
 
 <PageTitle>Spotify Like All</PageTitle>
 
-@if (!Tokens.HasToken)
+@if (!Auth.IsConfigured)
 {
     <section class="card">
-        <h2>Access token</h2>
-        <p>
-            Paste a Spotify user access token with the scopes
-            <code>playlist-read-private</code> and <code>playlist-read-collaborative</code>.
-        </p>
-        <div class="row">
-            <input type="password" class="grow" placeholder="Access token" @bind="tokenInput" @bind:event="oninput" />
-            <button class="primary" @onclick="SaveToken" disabled="@string.IsNullOrWhiteSpace(tokenInput)">Use token</button>
-        </div>
+        <h2>Spotify app not configured</h2>
+        <p>Store the Client ID and Client Secret from the Spotify dashboard as user secrets, then restart the app:</p>
+        <pre>dotnet user-secrets set "Spotify:ClientId" "&lt;client id&gt;" --project SpotifyLikeAll
+dotnet user-secrets set "Spotify:ClientSecret" "&lt;client secret&gt;" --project SpotifyLikeAll</pre>
+    </section>
+}
+else if (!Auth.IsLoggedIn)
+{
+    <section class="card login">
+        <h2>Connect your Spotify account</h2>
+        <p>You only need to do this once; the login is remembered for up to 180 days.</p>
+        @if (!string.IsNullOrEmpty(error ?? LoginError))
+        {
+            <div class="error">@(error ?? LoginError)</div>
+        }
+        <a class="button primary" href="/login" data-enhance-nav="false">Log in with Spotify</a>
     </section>
 }
 else
 {
     <div class="toolbar">
         <button class="primary" @onclick="LoadAsync" disabled="@loading">
-            @(result is null ? "Load my playlists" : "Reload")
+            @(loading ? "Loading …" : "Reload")
         </button>
 
         @if (result is not null && !loading)
@@ -39,7 +46,13 @@ else
             <span class="status">@status</span>
         }
 
-        <button class="link" @onclick="ClearToken" disabled="@loading">Change token</button>
+        <span class="account">
+            @if (result is not null)
+            {
+                <span>@(result.Me.DisplayName ?? result.Me.Id)</span>
+            }
+            <a class="link" href="/logout" data-enhance-nav="false">Log out</a>
+        </span>
     </div>
 
     @if (error is not null)
@@ -50,8 +63,7 @@ else
     @if (result is not null)
     {
         <p class="summary">
-            Logged in as <strong>@(result.Me.DisplayName ?? result.Me.Id)</strong>
-            · @result.Owned.Count playlists
+            @result.Owned.Count playlists
             · @TotalSongs songs
             · <strong>@result.Registry.Count unique</strong>
             · @(TotalSongs - result.Registry.Count) duplicates
@@ -129,7 +141,9 @@ else
 }
 
 @code {
-    private string? tokenInput;
+    [SupplyParameterFromQuery]
+    public string? LoginError { get; set; }
+
     private PlaylistLoader.Result? result;
     private bool loading;
     private string? status;
@@ -141,17 +155,13 @@ else
 
     private bool IsFiltering => !string.IsNullOrWhiteSpace(filter);
 
-    private void SaveToken()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Tokens.AccessToken = tokenInput?.Trim();
-        tokenInput = null;
-        error = null;
-    }
-
-    private void ClearToken()
-    {
-        Tokens.AccessToken = null;
-        result = null;
+        // Load automatically once the interactive connection is up (runs only once, not during prerendering).
+        if (firstRender && Auth.IsConfigured && Auth.IsLoggedIn && result is null)
+        {
+            await LoadAsync();
+        }
     }
 
     private async Task LoadAsync()
@@ -159,6 +169,7 @@ else
         loading = true;
         error = null;
         status = "Loading playlists …";
+        StateHasChanged();
 
         try
         {
@@ -168,13 +179,19 @@ else
                 _ = InvokeAsync(StateHasChanged);
             });
         }
+        catch (NotLoggedInException ex)
+        {
+            // Session expired or revoked: the page falls back to the login card.
+            result = null;
+            error = ex.Message;
+        }
+        catch (SpotifyAuthException ex)
+        {
+            error = ex.Message;
+        }
         catch (SpotifyApiException ex)
         {
             error = ex.Message;
-            if (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-            {
-                Tokens.AccessToken = null;
-            }
         }
         catch (HttpRequestException ex)
         {
@@ -183,6 +200,7 @@ else
         finally
         {
             loading = false;
+            StateHasChanged();
         }
     }
 

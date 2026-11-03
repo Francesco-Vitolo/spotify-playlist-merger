@@ -4,7 +4,8 @@ Local Blazor app (.NET 10) that goes through my Spotify playlists. See [PLAN.md]
 
 ## Current state
 
-- Loads all playlists **owned by me** (followed playlists are listed as skipped)
+- **Log in with Spotify** once; the app keeps the login for up to 180 days and renews the access token automatically
+- Loads all playlists **owned by me** automatically after login (followed playlists are listed as skipped)
 - Shows every playlist with its songs (expand a playlist to see the table)
 - Detects duplicates within a playlist and across playlists (by ISRC, falling back to the Spotify URI);
   `TrackRegistry.UniqueTracks` holds each song exactly once for the later "like" step
@@ -12,23 +13,28 @@ Local Blazor app (.NET 10) that goes through my Spotify playlists. See [PLAN.md]
 - Ignores podcast episodes, local files and unavailable items
 - Retries automatically on rate limits (HTTP 429)
 
+## Setup (one time)
+
+1. In the [Spotify dashboard](https://developer.spotify.com/dashboard) app settings:
+   - API: **Web API**
+   - Redirect URI: `http://127.0.0.1:8888/callback`
+   - Under **User Management**, add the email of your Spotify account
+2. Store the credentials as user secrets (they stay out of the repo):
+
+   ```bash
+   dotnet user-secrets set "Spotify:ClientId" "<client id>" --project SpotifyLikeAll
+   dotnet user-secrets set "Spotify:ClientSecret" "<client secret>" --project SpotifyLikeAll
+   ```
+
 ## Run
 
 ```bash
 dotnet run --project SpotifyLikeAll
 ```
 
-The app opens on <http://127.0.0.1:8888>.
+Open <http://127.0.0.1:8888> (use `127.0.0.1`, not `localhost`, so the login cookie matches the redirect URI)
+and click **Log in with Spotify**.
 
-There is no login flow yet. The app needs a Spotify user access token with the scopes
-`playlist-read-private` and `playlist-read-collaborative`. Either paste it into the page, or set it beforehand:
-
-```bash
-# user secret (stays out of the repo)
-dotnet user-secrets set "Spotify:AccessToken" "<token>" --project SpotifyLikeAll
-
-# or environment variable
-export SPOTIFY_ACCESS_TOKEN="<token>"
-```
-
-Tokens expire after 1 hour; the page asks for a new one when that happens.
+The refresh token is stored encrypted (ASP.NET Core Data Protection) in
+`%LOCALAPPDATA%\SpotifyLikeAll\refresh-token.dat` (Linux/macOS: `~/.local/share/SpotifyLikeAll/`).
+**Log out** deletes it.

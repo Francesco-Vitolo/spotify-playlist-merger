@@ -58,13 +58,12 @@ SpotifyLikeAll/
 - [ ] Scopes: `playlist-read-private`, `playlist-read-collaborative`, `user-library-read`, `user-library-modify`
 - [ ] Put the Client ID into `appsettings.json` (no client secret needed with PKCE)
 
-### 2. Authentication (`AuthService`)
-- [ ] Generate code verifier (`RandomNumberGenerator`) and challenge (SHA-256, Base64Url)
-- [ ] Open the authorize URL in the browser (`Process.Start` with `UseShellExecute = true`)
-- [ ] Receive the callback with `HttpListener` on `http://127.0.0.1:8888/`
-- [ ] Exchange the code at `https://accounts.spotify.com/api/token`
-- [ ] Store the refresh token (JSON in `%APPDATA%`, optionally protected with `ProtectedData`)
-- [ ] Refresh the access token automatically (it expires after 1 hour)
+### 2. Authentication (`Auth/`)
+- [x] Authorization Code flow with client secret (server-side Blazor, so the secret never reaches the browser)
+- [x] `/login` redirects to Spotify with a random `state` (cookie), `/callback` validates it and exchanges the code
+- [x] Refresh token stored encrypted with ASP.NET Core Data Protection in `%LOCALAPPDATA%\SpotifyLikeAll`
+- [x] Access token refreshed automatically before it expires (and once on an unexpected 401)
+- [x] `/logout` deletes the stored refresh token
 
 ### 3. API client (`SpotifyClient`)
 - [ ] `IAsyncEnumerable<Playlist> GetMyPlaylistsAsync()` → `GET /me/playlists` (paged, limit 50)
