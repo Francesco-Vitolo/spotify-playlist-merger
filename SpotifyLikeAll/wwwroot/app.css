@@ -145,6 +145,36 @@ pre {
     font-size: 12px;
 }
 
+.badge.ok { background: rgba(29, 185, 84, .15); color: var(--accent); }
+.badge.muted { background: var(--surface-2); color: var(--muted); }
+
+.ok { color: var(--accent); }
+
+.card.done { color: var(--accent); margin-bottom: 16px; }
+
+.secondary { background: var(--surface-2); color: var(--text); }
+.secondary:hover:not(:disabled) { background: #3a3a3a; }
+
+.actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 4px 16px 12px;
+}
+
+.message { color: var(--accent); font-size: 14px; padding: 0 16px 8px; margin: 0; }
+
+.dry-run { color: var(--warn); }
+
+.playlist.is-skipped .name { color: var(--muted); }
+
+th.sel, td.sel { width: 36px; padding-right: 0; }
+td.sel input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+
+tr.liked td { color: var(--muted); }
+tr.liked td.note { color: var(--accent); }
+
 table {
     width: 100%;
     border-collapse: collapse;

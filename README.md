@@ -7,9 +7,14 @@ Local Blazor app (.NET 10) that goes through my Spotify playlists. See [PLAN.md]
 - **Log in with Spotify** once; the app keeps the login for up to 180 days and renews the access token automatically
 - Loads all playlists **owned by me** automatically after login (followed playlists are listed as skipped)
 - Shows every playlist with its songs (expand a playlist to see the table)
-- Detects duplicates within a playlist and across playlists (by ISRC, falling back to the Spotify URI);
-  `TrackRegistry.UniqueTracks` holds each song exactly once for the later "like" step
-- Filter by title/artist and hide duplicates
+- Detects duplicates within a playlist and across playlists (by ISRC, falling back to the Spotify URI)
+- Checks which songs are already liked (a song counts as liked if any version of it is liked)
+- Per playlist: shows the songs not yet liked with checkboxes (all ticked by default),
+  **Like N selected**, **Select all/none**, **Skip playlist**
+- Never likes a song twice: songs liked in one playlist disappear from the others
+- **Dry run** switch: shows what would be liked without changing anything
+- Every liked song is logged to `liked-log.tsv` (timestamp, URI, song, playlist) for review or undo
+- Filter by title/artist, "only not yet liked" (default) and hide duplicates
 - Ignores podcast episodes, local files and unavailable items
 - Retries automatically on rate limits (HTTP 429)
 
@@ -37,4 +42,7 @@ and click **Log in with Spotify**.
 
 The refresh token is stored encrypted (ASP.NET Core Data Protection) in
 `%LOCALAPPDATA%\SpotifyLikeAll\refresh-token.dat` (Linux/macOS: `~/.local/share/SpotifyLikeAll/`).
-**Log out** deletes it.
+**Log out** deletes it. The like log `liked-log.tsv` is in the same folder.
+
+If you logged in before the like feature existed and get a 403 when liking, log out and in again
+so the app gets the library permissions.

@@ -19,10 +19,7 @@ public sealed class RefreshTokenStore
         _protector = dataProtection.CreateProtector("SpotifyLikeAll.RefreshToken.v1");
         _logger = logger;
 
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpotifyLikeAll");
-        Directory.CreateDirectory(dir);
-        _path = Path.Combine(dir, "refresh-token.dat");
+        _path = Path.Combine(Services.AppPaths.DataDirectory, "refresh-token.dat");
     }
 
     public string? Load()

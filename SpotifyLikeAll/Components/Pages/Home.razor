@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject SpotifyAuthService Auth
 @inject PlaylistLoader Loader
+@inject LibraryService Library
 
 <PageTitle>Spotify Like All</PageTitle>
 
@@ -29,19 +30,19 @@ else if (!Auth.IsLoggedIn)
 else
 {
     <div class="toolbar">
-        <button class="primary" @onclick="LoadAsync" disabled="@loading">
+        <button class="primary" @onclick="LoadAsync" disabled="@Busy">
             @(loading ? "Loading …" : "Reload")
         </button>
 
         @if (result is not null && !loading)
         {
             <input type="search" placeholder="Filter by title or artist…" @bind="filter" @bind:event="oninput" />
-            <label class="check">
-                <input type="checkbox" @bind="hideDuplicates" /> Hide duplicates
-            </label>
+            <label class="check"><input type="checkbox" @bind="onlyNotLiked" /> Only not yet liked</label>
+            <label class="check"><input type="checkbox" @bind="hideDuplicates" /> Hide duplicates</label>
+            <label class="check dry-run"><input type="checkbox" @bind="dryRun" /> Dry run</label>
         }
 
-        @if (loading)
+        @if (Busy)
         {
             <span class="status">@status</span>
         }
@@ -60,38 +61,86 @@ else
         <div class="error">@error</div>
     }
 
-    @if (result is not null)
+    @if (result is not null && likedKeys is not null)
     {
         <p class="summary">
             @result.Owned.Count playlists
-            · @TotalSongs songs
-            · <strong>@result.Registry.Count unique</strong>
-            · @(TotalSongs - result.Registry.Count) duplicates
+            · @result.Registry.Count unique songs
+            · <strong>@NotLikedCount not yet liked</strong>
+            · @AlreadyLikedCount already liked
+            @if (likedThisSession > 0)
+            {
+                <span> · <strong class="ok">@likedThisSession liked in this session</strong></span>
+            }
         </p>
+
+        @if (NotLikedCount == 0)
+        {
+            <div class="card done">✔ Every song in your playlists is liked.</div>
+        }
 
         @foreach (var playlist in result.Owned)
         {
-            var rows = VisibleRows(playlist).ToList();
-            if (IsFiltering && rows.Count == 0)
+            var rows = BuildRows(playlist);
+            var visible = rows.Where(IsVisible).ToList();
+            var pending = PendingTracks(playlist);
+            var selectedCount = pending.Count(IsSelected);
+            var isSkipped = skipped.Contains(playlist.Id);
+
+            if ((IsFiltering || onlyNotLiked) && visible.Count == 0 && !messages.ContainsKey(playlist.Id))
             {
                 continue;
             }
 
-            var duplicates = playlist.Entries.Count(e => e.Duplicate != DuplicateKind.None);
-
-            <details class="playlist" open="@IsFiltering">
+            <details class="playlist @(isSkipped ? "is-skipped" : null)" open="@IsFiltering">
                 <summary>
                     <span class="name">@playlist.Name</span>
                     <span class="meta">
                         @playlist.Entries.Count songs
-                        @if (duplicates > 0)
+                        @if (isSkipped)
                         {
-                            <span class="badge">@duplicates duplicates</span>
+                            <span class="badge muted">skipped</span>
+                        }
+                        else if (pending.Count == 0)
+                        {
+                            <span class="badge ok">✔ all liked</span>
+                        }
+                        else
+                        {
+                            <span class="badge">@pending.Count not yet liked</span>
                         }
                     </span>
                 </summary>
 
-                @if (rows.Count == 0)
+                @if (pending.Count > 0 && !isSkipped)
+                {
+                    <div class="actions">
+                        <button class="primary" disabled="@(Busy || selectedCount == 0)"
+                                @onclick="() => LikeSelectedAsync(playlist)">
+                            @(dryRun ? "Dry run: like" : "Like") @selectedCount selected
+                        </button>
+                        <button class="secondary" disabled="@Busy" @onclick="() => SetSelection(playlist, true)">Select all</button>
+                        <button class="secondary" disabled="@Busy" @onclick="() => SetSelection(playlist, false)">Select none</button>
+                        <button class="secondary" disabled="@Busy" @onclick="() => ToggleSkip(playlist)">Skip playlist</button>
+                        @if (busyPlaylistId == playlist.Id)
+                        {
+                            <span class="status">@status</span>
+                        }
+                    </div>
+                }
+                else if (isSkipped)
+                {
+                    <div class="actions">
+                        <button class="secondary" disabled="@Busy" @onclick="() => ToggleSkip(playlist)">Undo skip</button>
+                    </div>
+                }
+
+                @if (messages.TryGetValue(playlist.Id, out var message))
+                {
+                    <p class="message">@message</p>
+                }
+
+                @if (visible.Count == 0)
                 {
                     <p class="empty">No songs to show.</p>
                 }
@@ -99,16 +148,26 @@ else
                 {
                     <table>
                         <thead>
-                            <tr><th class="num">#</th><th>Title</th><th>Artist</th><th></th></tr>
+                            <tr><th class="sel"></th><th class="num">#</th><th>Title</th><th>Artist</th><th></th></tr>
                         </thead>
                         <tbody>
-                            @foreach (var (entry, index) in rows)
+                            @foreach (var row in visible)
                             {
-                                <tr class="@(entry.Duplicate == DuplicateKind.None ? null : "dup")">
-                                    <td class="num">@(index + 1)</td>
-                                    <td>@entry.Track.Name</td>
-                                    <td>@entry.Track.Artists</td>
-                                    <td class="note">@DuplicateNote(entry)</td>
+                                var track = row.Entry.Track;
+                                var canSelect = !row.IsLiked && row.IsFirstInPlaylist && !isSkipped;
+
+                                <tr class="@(row.IsLiked ? "liked" : !row.IsFirstInPlaylist ? "dup" : null)">
+                                    <td class="sel">
+                                        @if (canSelect)
+                                        {
+                                            <input type="checkbox" checked="@IsSelected(track)" disabled="@Busy"
+                                                   @onchange="e => SetSelected(track, e.Value is true)" />
+                                        }
+                                    </td>
+                                    <td class="num">@(row.Index + 1)</td>
+                                    <td>@track.Name</td>
+                                    <td>@track.Artists</td>
+                                    <td class="note">@Note(row)</td>
                                 </tr>
                             }
                         </tbody>
@@ -126,7 +185,7 @@ else
         {
             <details class="playlist skipped">
                 <summary>
-                    <span class="name">Skipped – not owned by you</span>
+                    <span class="name">Not owned by you – ignored</span>
                     <span class="meta">@result.NotOwned.Count playlists</span>
                 </summary>
                 <ul>
@@ -144,16 +203,37 @@ else
     [SupplyParameterFromQuery]
     public string? LoginError { get; set; }
 
+    private sealed record Row(PlaylistTrackEntry Entry, int Index, bool IsFirstInPlaylist, bool IsLiked);
+
     private PlaylistLoader.Result? result;
+    private HashSet<string>? likedKeys;
+
+    // Songs the user unticked (by dedupe key). Everything not yet liked is selected by default.
+    private readonly HashSet<string> deselected = new();
+    private readonly HashSet<string> skipped = new();
+    private readonly Dictionary<string, string> messages = new();
+
     private bool loading;
+    private string? busyPlaylistId;
     private string? status;
     private string? error;
-    private bool hideDuplicates;
-    private string filter = "";
+    private int likedThisSession;
 
-    private int TotalSongs => result?.Owned.Sum(p => p.Entries.Count) ?? 0;
+    private string filter = "";
+    private bool onlyNotLiked = true;
+    private bool hideDuplicates;
+    private bool dryRun;
+
+    private bool Busy => loading || busyPlaylistId is not null;
 
     private bool IsFiltering => !string.IsNullOrWhiteSpace(filter);
+
+    private IEnumerable<string> AllKeys =>
+        result?.Owned.SelectMany(p => p.Entries).Select(e => e.Track.DedupeKey).Distinct() ?? [];
+
+    private int NotLikedCount => AllKeys.Count(k => likedKeys?.Contains(k) != true);
+
+    private int AlreadyLikedCount => AllKeys.Count(k => likedKeys?.Contains(k) == true);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -173,29 +253,17 @@ else
 
         try
         {
-            result = await Loader.LoadOwnedPlaylistsAsync(message =>
-            {
-                status = message;
-                _ = InvokeAsync(StateHasChanged);
-            });
+            var loaded = await Loader.LoadOwnedPlaylistsAsync(ReportProgress);
+            var liked = await Library.GetLikedKeysAsync(loaded.Owned, ReportProgress);
+
+            result = loaded;
+            likedKeys = liked;
+            deselected.Clear();
+            skipped.Clear();
+            messages.Clear();
         }
-        catch (NotLoggedInException ex)
+        catch (Exception ex) when (TryHandle(ex))
         {
-            // Session expired or revoked: the page falls back to the login card.
-            result = null;
-            error = ex.Message;
-        }
-        catch (SpotifyAuthException ex)
-        {
-            error = ex.Message;
-        }
-        catch (SpotifyApiException ex)
-        {
-            error = ex.Message;
-        }
-        catch (HttpRequestException ex)
-        {
-            error = $"Network error: {ex.Message}";
         }
         finally
         {
@@ -204,18 +272,144 @@ else
         }
     }
 
-    private IEnumerable<(PlaylistTrackEntry Entry, int Index)> VisibleRows(OwnedPlaylist playlist) =>
-        playlist.Entries
-            .Select((entry, index) => (entry, index))
-            .Where(r => !hideDuplicates || r.entry.Duplicate == DuplicateKind.None)
-            .Where(r => !IsFiltering
-                        || r.entry.Track.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
-                        || r.entry.Track.Artists.Contains(filter, StringComparison.OrdinalIgnoreCase));
-
-    private static string DuplicateNote(PlaylistTrackEntry entry) => entry.Duplicate switch
+    private async Task LikeSelectedAsync(OwnedPlaylist playlist)
     {
-        DuplicateKind.SamePlaylist => "Duplicate in this playlist",
-        DuplicateKind.OtherPlaylist => $"Already in \"{entry.FirstSeenInPlaylist}\"",
-        _ => "",
-    };
+        if (likedKeys is null)
+            return;
+
+        var tracks = PendingTracks(playlist).Where(IsSelected).ToList();
+        if (tracks.Count == 0)
+            return;
+
+        if (dryRun)
+        {
+            messages[playlist.Id] = $"Dry run: {tracks.Count} songs would be liked. Nothing was changed.";
+            return;
+        }
+
+        busyPlaylistId = playlist.Id;
+        error = null;
+        status = $"Liking songs … 0/{tracks.Count}";
+        messages.Remove(playlist.Id);
+        StateHasChanged();
+
+        var before = likedKeys.Count;
+        try
+        {
+            var count = await Library.LikeAsync(tracks, playlist.Name, likedKeys, ReportProgress);
+            likedThisSession += count;
+            messages[playlist.Id] = $"✔ Liked {count} songs.";
+        }
+        catch (Exception ex) when (TryHandle(ex))
+        {
+            // Batches that succeeded before the error are already in likedKeys.
+            var partial = likedKeys.Count - before;
+            if (partial > 0)
+            {
+                likedThisSession += partial;
+                messages[playlist.Id] = $"Liked {partial} songs before an error occurred.";
+            }
+        }
+        finally
+        {
+            busyPlaylistId = null;
+            StateHasChanged();
+        }
+    }
+
+    private void ReportProgress(string message)
+    {
+        status = message;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private bool TryHandle(Exception ex)
+    {
+        switch (ex)
+        {
+            case NotLoggedInException:
+                // Session expired or revoked: the page falls back to the login card.
+                result = null;
+                likedKeys = null;
+                error = ex.Message;
+                return true;
+            case SpotifyAuthException or SpotifyApiException:
+                error = ex.Message;
+                return true;
+            case HttpRequestException:
+                error = $"Network error: {ex.Message}";
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private List<Row> BuildRows(OwnedPlaylist playlist)
+    {
+        var seenInPlaylist = new HashSet<string>();
+        return playlist.Entries
+            .Select((entry, index) => new Row(
+                entry,
+                index,
+                seenInPlaylist.Add(entry.Track.DedupeKey),
+                likedKeys?.Contains(entry.Track.DedupeKey) == true))
+            .ToList();
+    }
+
+    private bool IsVisible(Row row)
+    {
+        if (onlyNotLiked && (row.IsLiked || !row.IsFirstInPlaylist))
+            return false;
+
+        if (hideDuplicates && row.Entry.Duplicate != DuplicateKind.None)
+            return false;
+
+        return !IsFiltering
+               || row.Entry.Track.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+               || row.Entry.Track.Artists.Contains(filter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Songs of this playlist that are not liked yet, each song only once.</summary>
+    private List<Track> PendingTracks(OwnedPlaylist playlist) =>
+        playlist.Entries
+            .Select(e => e.Track)
+            .Where(t => likedKeys?.Contains(t.DedupeKey) != true)
+            .DistinctBy(t => t.DedupeKey)
+            .ToList();
+
+    private bool IsSelected(Track track) => !deselected.Contains(track.DedupeKey);
+
+    private void SetSelected(Track track, bool selected)
+    {
+        if (selected)
+            deselected.Remove(track.DedupeKey);
+        else
+            deselected.Add(track.DedupeKey);
+    }
+
+    private void SetSelection(OwnedPlaylist playlist, bool selected)
+    {
+        foreach (var track in PendingTracks(playlist))
+            SetSelected(track, selected);
+    }
+
+    private void ToggleSkip(OwnedPlaylist playlist)
+    {
+        if (!skipped.Remove(playlist.Id))
+            skipped.Add(playlist.Id);
+        messages.Remove(playlist.Id);
+    }
+
+    private static string Note(Row row)
+    {
+        if (row.IsLiked)
+            return "♥ Liked";
+
+        if (!row.IsFirstInPlaylist)
+            return "Duplicate in this playlist";
+
+        return row.Entry.Duplicate == DuplicateKind.OtherPlaylist
+            ? $"Also in \"{row.Entry.FirstSeenInPlaylist}\""
+            : "";
+    }
 }

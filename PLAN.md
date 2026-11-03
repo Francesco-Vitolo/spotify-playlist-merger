@@ -53,10 +53,10 @@ SpotifyLikeAll/
 ## Steps
 
 ### 1. Spotify app setup (one time)
-- [ ] Create an app at https://developer.spotify.com/dashboard
-- [ ] Redirect URI: `http://127.0.0.1:8888/callback`
-- [ ] Scopes: `playlist-read-private`, `playlist-read-collaborative`, `user-library-read`, `user-library-modify`
-- [ ] Put the Client ID into `appsettings.json` (no client secret needed with PKCE)
+- [x] Create an app at https://developer.spotify.com/dashboard
+- [x] Redirect URI: `http://127.0.0.1:8888/callback`
+- [x] Scopes: `playlist-read-private`, `playlist-read-collaborative`, `user-library-read`, `user-library-modify`
+- [x] Store Client ID and Client Secret as user secrets (`Spotify:ClientId`, `Spotify:ClientSecret`)
 
 ### 2. Authentication (`Auth/`)
 - [x] Authorization Code flow with client secret (server-side Blazor, so the secret never reaches the browser)
@@ -66,32 +66,32 @@ SpotifyLikeAll/
 - [x] `/logout` deletes the stored refresh token
 
 ### 3. API client (`SpotifyClient`)
-- [ ] `IAsyncEnumerable<Playlist> GetMyPlaylistsAsync()` → `GET /me/playlists` (paged, limit 50)
-- [ ] `IAsyncEnumerable<PlaylistItem> GetPlaylistItemsAsync(string id)` → `GET /playlists/{id}/items` (paged)
-- [ ] `Task<bool[]> CheckSavedAsync(IReadOnlyList<string> uris)` → `GET /me/library/contains`
-- [ ] `Task SaveAsync(IReadOnlyList<string> uris)` → `PUT /me/library`
-- [ ] Batch with `.Chunk(BatchSize)` (check the API reference for the current max; the old endpoint allowed 50)
-- [ ] `SpotifyAuthHandler`: attach the bearer token, refresh on 401, wait for `Retry-After` on 429
+- [x] `IAsyncEnumerable<Playlist> GetMyPlaylistsAsync()` → `GET /me/playlists` (paged, limit 50)
+- [x] `IAsyncEnumerable<PlaylistItem> GetPlaylistItemsAsync(string id)` → `GET /playlists/{id}/items` (paged)
+- [x] `Task<bool[]> CheckSavedAsync(IReadOnlyList<string> uris)` → `GET /me/library/contains`
+- [x] `Task SaveAsync(IReadOnlyList<string> uris)` → `PUT /me/library`
+- [x] Batch with `.Chunk(40)` (max 40 URIs per `/me/library` request)
+- [x] Attach the bearer token, refresh on 401, wait for `Retry-After` on 429 (in `SpotifyClient.SendAsync`)
 
-### 4. Workflow (`LikeAllService`)
-1. [ ] Load all playlists; mark playlists without readable items as *skipped (not owned/collaborative)*
-2. [ ] For each playlist, load items and keep only real tracks:
+### 4. Workflow (`PlaylistLoader`, `LibraryService`, `Home.razor`)
+1. [x] Load all playlists; mark playlists without readable items as *skipped (not owned/collaborative)*
+2. [x] For each playlist, load items and keep only real tracks:
    - skip episodes, `is_local` files and null items
    - remove duplicates with `DistinctBy(t => t.Uri)`
-3. [ ] Remove tracks that are already liked:
+3. [x] Remove tracks that are already liked:
    - keep a global `HashSet<string>` of known liked URIs across playlists
    - check the rest with `CheckSavedAsync`
-4. [ ] If nothing is left, print `✔ all liked` and continue with the next playlist
-5. [ ] Otherwise show the not-yet-liked songs of the playlist in the Blazor UI:
+4. [x] If nothing is left, print `✔ all liked` and continue with the next playlist
+5. [x] Otherwise show the not-yet-liked songs of the playlist in the Blazor UI:
    - table with a checkbox per song, all pre-checked; untick the ones to exclude
    - buttons per playlist: **Like selected** / **Skip**
-6. [ ] Save the confirmed songs in batches (progress shown in the UI) and add them to the liked set
-7. [ ] Show a summary: playlists processed, songs liked, playlists skipped (with reason)
+6. [x] Save the confirmed songs in batches (progress shown in the UI) and add them to the liked set
+7. [x] Show a summary: playlists processed, songs liked, playlists skipped (with reason)
 
 ### 5. Safety
-- [ ] Dry-run switch in the UI: only list songs, never call `PUT /me/library`
-- [ ] Append every liked URI with a timestamp to `liked-log.txt` (for undo via `DELETE /me/library`)
-- [ ] Never like anything without an explicit confirmation per playlist
+- [x] Dry-run switch in the UI: only list songs, never call `PUT /me/library`
+- [x] Append every liked URI with a timestamp to `liked-log.tsv` (for undo via `DELETE /me/library`)
+- [x] Never like anything without an explicit confirmation per playlist
 
 ## Possible later extensions
 - Merge several playlists into one new playlist (`POST /me/playlists`, `POST /playlists/{id}/items`)

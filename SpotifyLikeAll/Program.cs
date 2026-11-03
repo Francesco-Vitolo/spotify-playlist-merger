@@ -16,6 +16,8 @@ builder.Services.AddSingleton<SpotifyAuthService>();
 builder.Services.AddHttpClient<ISpotifyClient, SpotifyClient>(http =>
     http.BaseAddress = new Uri("https://api.spotify.com/v1/"));
 builder.Services.AddScoped<PlaylistLoader>();
+builder.Services.AddSingleton<LikedLog>();
+builder.Services.AddScoped<LibraryService>();
 
 var app = builder.Build();
 
