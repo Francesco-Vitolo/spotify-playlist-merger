@@ -39,8 +39,8 @@ public sealed class SpotifyClient(HttpClient http, SpotifyAuthService auth) : IS
     public async Task<IReadOnlyList<TrackDto>> SearchTracksAsync(
         string query, int offset = 0, CancellationToken ct = default)
     {
-        // limit max is 10 since Feb 2026; market=from_token returns versions playable in the user's country.
-        var url = $"search?q={Uri.EscapeDataString(query)}&type=track&limit=10&offset={offset}&market=from_token";
+        // limit max is 10 since Feb 2026. No market=from_token: it requires the user-read-private scope.
+        var url = $"search?q={Uri.EscapeDataString(query)}&type=track&limit=10&offset={offset}";
         var response = await GetAsync<SearchResponseDto>(url, ct);
         return response.Tracks?.Items ?? [];
     }

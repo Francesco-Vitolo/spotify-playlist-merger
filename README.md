@@ -26,6 +26,8 @@ Local Blazor app (.NET 10) that goes through my Spotify playlists. See [PLAN.md]
 - Filter by title/artist, "only not yet liked" (default) and hide duplicates
 - Ignores podcast episodes, local files and unavailable items
 - Retries automatically on rate limits (HTTP 429)
+- Loaded playlists, Liked Songs and top songs are kept in memory while the app runs, so switching tabs
+  is instant; **Reload** fetches fresh data
 
 ## Setup (one time)
 

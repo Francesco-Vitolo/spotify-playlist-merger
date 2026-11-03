@@ -56,9 +56,10 @@ public static class AuthEndpoints
             return Results.Redirect("/");
         });
 
-        app.MapGet("/logout", async (SpotifyAuthService auth) =>
+        app.MapGet("/logout", async (SpotifyAuthService auth, Services.AppState state) =>
         {
             await auth.LogoutAsync();
+            state.Clear();
             return Results.Redirect("/");
         });
     }

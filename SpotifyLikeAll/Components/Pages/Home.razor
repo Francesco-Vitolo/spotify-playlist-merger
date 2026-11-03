@@ -4,6 +4,7 @@
 @inject PlaylistLoader Loader
 @inject LibraryService Library
 @inject IgnoredPlaylistsStore IgnoredStore
+@inject AppState State
 
 <PageTitle>Spotify Like All</PageTitle>
 
@@ -356,14 +357,18 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Load automatically once the interactive connection is up (runs only once, not during prerendering).
+        // Runs once the interactive connection is up (not during prerendering).
+        // Uses data already loaded in this app session (e.g. by the Artists tab) and loads only what is missing.
         if (firstRender && Auth.IsConfigured && Auth.IsLoggedIn && result is null)
         {
-            await LoadAsync();
+            await LoadCoreAsync(reloadPlaylists: false, reloadLibrary: false);
         }
     }
 
-    private async Task LoadAsync()
+    /// <summary>"Reload" button: fetch everything fresh from Spotify.</summary>
+    private Task LoadAsync() => LoadCoreAsync(reloadPlaylists: true, reloadLibrary: true);
+
+    private async Task LoadCoreAsync(bool reloadPlaylists, bool reloadLibrary)
     {
         loading = true;
         error = null;
@@ -372,9 +377,16 @@ else
 
         try
         {
-            var loaded = await Loader.LoadOwnedPlaylistsAsync(ReportProgress);
+            var loaded = !reloadPlaylists && State.Playlists is { } cachedPlaylists
+                ? cachedPlaylists
+                : await Loader.LoadOwnedPlaylistsAsync(ReportProgress);
+            State.Playlists = loaded;
+
             ReportProgress("Loading liked songs …");
-            var library = await Library.LoadLikedLibraryAsync(ReportProgress);
+            var library = !reloadLibrary && State.Library is { } cachedLibrary
+                ? cachedLibrary
+                : await Library.LoadLikedLibraryAsync(ReportProgress);
+            State.Library = library;
 
             result = loaded;
             likedKeys = library.Keys;
@@ -485,6 +497,7 @@ else
         {
             case NotLoggedInException:
                 // Session expired or revoked: the page falls back to the login card.
+                State.Clear();
                 result = null;
                 likedKeys = null;
                 likedLibrary = null;
@@ -566,9 +579,9 @@ else
     {
         IgnoredStore.Include(playlist.Id);
 
-        // Playlists ignored in this session are still loaded; others need a reload to fetch their songs.
+        // Playlists ignored in this session are still loaded; others need their songs fetched.
         if (result?.Owned.Any(p => p.Id == playlist.Id) != true)
-            await LoadAsync();
+            await LoadCoreAsync(reloadPlaylists: true, reloadLibrary: false);
     }
 
     private static string VersionInfo(LikedTrack version)

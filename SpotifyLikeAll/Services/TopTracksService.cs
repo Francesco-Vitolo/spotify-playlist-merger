@@ -7,16 +7,14 @@ namespace SpotifyLikeAll.Services;
 /// Approximates an artist's top songs with Spotify search (the official top-tracks endpoint was removed
 /// in Feb 2026). Results follow Spotify's search relevance, not an official popularity ranking.
 /// </summary>
-public sealed class TopTracksService(ISpotifyClient client)
+public sealed class TopTracksService(ISpotifyClient client, AppState state)
 {
     public const int TopCount = 10;
     private const int MaxSearchRequests = 3;
 
-    private readonly Dictionary<string, IReadOnlyList<Track>> _cache = new();
-
     public async Task<IReadOnlyList<Track>> GetTopTracksAsync(ArtistSummary artist, CancellationToken ct = default)
     {
-        if (_cache.TryGetValue(artist.Id, out var cached))
+        if (state.TopTracks.TryGetValue(artist.Id, out var cached))
             return cached;
 
         var query = $"artist:\"{artist.Name.Replace("\"", "")}\"";
@@ -49,7 +47,7 @@ public sealed class TopTracksService(ISpotifyClient client)
                 break; // no more results
         }
 
-        _cache[artist.Id] = result;
+        state.TopTracks[artist.Id] = result;
         return result;
     }
 }

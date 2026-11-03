@@ -3,6 +3,7 @@
 @inject SpotifyAuthService Auth
 @inject LibraryService Library
 @inject TopTracksService TopTracks
+@inject AppState State
 
 <PageTitle>Artists – Spotify Like All</PageTitle>
 
@@ -53,7 +54,7 @@ else
         @foreach (var artist in VisibleArtists.Take(shownCount))
         {
             var isOpen = expanded.Contains(artist.Id);
-            topTracks.TryGetValue(artist.Id, out var tracks);
+            State.TopTracks.TryGetValue(artist.Id, out var tracks);
 
             <div class="playlist">
                 <div class="artist-row" @onclick="() => ToggleAsync(artist)">
@@ -162,7 +163,6 @@ else
     private LikedLibrary? library;
     private readonly HashSet<string> expanded = new();
     private readonly HashSet<string> loadingArtists = new();
-    private readonly Dictionary<string, IReadOnlyList<Track>> topTracks = new();
     private readonly Dictionary<string, string> messages = new();
 
     private bool loading;
@@ -183,12 +183,21 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && Auth.IsConfigured && Auth.IsLoggedIn && library is null)
+        if (!firstRender || !Auth.IsConfigured || !Auth.IsLoggedIn || library is not null)
+            return;
+
+        // Reuse the Liked Songs already loaded in this app session (e.g. by the Playlists tab).
+        if (State.Library is { } cached)
         {
-            await LoadAsync();
+            library = cached;
+            StateHasChanged();
+            return;
         }
+
+        await LoadAsync();
     }
 
+    /// <summary>Loads Liked Songs from Spotify (first visit or "Reload").</summary>
     private async Task LoadAsync()
     {
         loading = true;
@@ -199,6 +208,8 @@ else
         try
         {
             library = await Library.LoadLikedLibraryAsync(ReportProgress);
+            State.Library = library;
+            State.TopTracks.Clear();
             messages.Clear();
             shownCount = PageSize;
         }
@@ -218,13 +229,13 @@ else
             return;
 
         expanded.Add(artist.Id);
-        if (topTracks.ContainsKey(artist.Id))
+        if (State.TopTracks.ContainsKey(artist.Id))
             return;
 
         loadingArtists.Add(artist.Id);
         try
         {
-            topTracks[artist.Id] = await TopTracks.GetTopTracksAsync(artist);
+            await TopTracks.GetTopTracksAsync(artist); // stored in State.TopTracks
         }
         catch (Exception ex) when (TryHandle(ex))
         {
@@ -286,6 +297,7 @@ else
         switch (ex)
         {
             case NotLoggedInException:
+                State.Clear();
                 library = null;
                 error = ex.Message + " Go to Playlists to log in again.";
                 return true;

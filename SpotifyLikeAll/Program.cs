@@ -18,6 +18,7 @@ builder.Services.AddHttpClient<ISpotifyClient, SpotifyClient>(http =>
 builder.Services.AddScoped<PlaylistLoader>();
 builder.Services.AddSingleton<LikedLog>();
 builder.Services.AddSingleton<IgnoredPlaylistsStore>();
+builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<TopTracksService>();
 
