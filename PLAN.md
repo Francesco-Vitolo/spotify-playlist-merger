@@ -24,7 +24,6 @@ Goal: go through all of my Spotify playlists, show the songs in each playlist th
 - `HttpClient` (typed client) + `System.Text.Json`
 - `Microsoft.Extensions.Hosting` for DI, config (`appsettings.json`) and logging
 - `Spectre.Console` for tables and prompts (optional)
-- xUnit + NSubstitute for tests
 
 ## Project structure
 
@@ -45,7 +44,6 @@ SpotifyLikeAll/
   Services/
     LikeAllService.cs        main workflow
     ConsolePrompter.cs       confirmation UI
-SpotifyLikeAll.Tests/
 ```
 
 ## Steps
@@ -99,11 +97,6 @@ SpotifyLikeAll.Tests/
 - [ ] `--dry-run`: only list songs, never call `PUT /me/library`
 - [ ] Append every liked URI with a timestamp to `liked-log.txt` (for undo via `DELETE /me/library`)
 - [ ] Never like anything without an explicit confirmation per playlist
-
-### 6. Testing
-- [ ] Unit tests with a mocked `ISpotifyClient`: track filtering, dedupe across playlists, batching, prompt choices
-- [ ] Unit test PKCE helper (challenge matches verifier)
-- [ ] Manual first run with `--dry-run` on a small playlist, then a real run on that playlist
 
 ## Possible later extensions
 - Merge several playlists into one new playlist (`POST /me/playlists`, `POST /playlists/{id}/items`)
