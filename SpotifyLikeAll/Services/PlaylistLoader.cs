@@ -3,12 +3,13 @@ using SpotifyLikeAll.Models;
 
 namespace SpotifyLikeAll.Services;
 
-public sealed class PlaylistLoader(ISpotifyClient client)
+public sealed class PlaylistLoader(ISpotifyClient client, IgnoredPlaylistsStore ignoredStore)
 {
     public sealed record Result(
         UserDto Me,
         IReadOnlyList<OwnedPlaylist> Owned,
         IReadOnlyList<SkippedPlaylist> NotOwned,
+        IReadOnlyList<IgnoredPlaylist> Ignored,
         TrackRegistry Registry);
 
     /// <summary>
@@ -24,6 +25,7 @@ public sealed class PlaylistLoader(ISpotifyClient client)
 
         var owned = new List<OwnedPlaylist>();
         var notOwned = new List<SkippedPlaylist>();
+        var ignored = new List<IgnoredPlaylist>();
 
         await foreach (var playlist in client.GetMyPlaylistsAsync(ct))
         {
@@ -33,11 +35,18 @@ public sealed class PlaylistLoader(ISpotifyClient client)
                 continue;
             }
 
+            if (ignoredStore.IsIgnored(playlist.Id))
+            {
+                // Not loaded at all: saves API calls for playlists the user marked as done.
+                ignored.Add(new IgnoredPlaylist(playlist.Id, playlist.Name, playlist.ItemCount));
+                continue;
+            }
+
             onProgress?.Invoke($"Loading \"{playlist.Name}\" ({owned.Count + 1}) …");
             owned.Add(await LoadPlaylistAsync(playlist, registry, ct));
         }
 
-        return new Result(me, owned, notOwned, registry);
+        return new Result(me, owned, notOwned, ignored, registry);
     }
 
     private async Task<OwnedPlaylist> LoadPlaylistAsync(PlaylistDto playlist, TrackRegistry registry, CancellationToken ct)

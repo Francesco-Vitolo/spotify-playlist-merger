@@ -47,6 +47,9 @@ public sealed record OwnedPlaylist(string Id, string Name, IReadOnlyList<Playlis
 
 public sealed record SkippedPlaylist(string Name, string OwnerName);
 
+/// <summary>An owned playlist the user chose to ignore; its songs are not loaded.</summary>
+public sealed record IgnoredPlaylist(string Id, string Name, int ItemCount);
+
 /// <summary>A song in the user's Liked Songs.</summary>
 public sealed record LikedTrack(Track Track, DateTimeOffset? AddedAt);
 

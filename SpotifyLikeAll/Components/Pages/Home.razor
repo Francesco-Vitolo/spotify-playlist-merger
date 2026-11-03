@@ -3,6 +3,7 @@
 @inject SpotifyAuthService Auth
 @inject PlaylistLoader Loader
 @inject LibraryService Library
+@inject IgnoredPlaylistsStore IgnoredStore
 
 <PageTitle>Spotify Like All</PageTitle>
 
@@ -64,7 +65,7 @@ else
     @if (result is not null && likedKeys is not null)
     {
         <p class="summary">
-            @result.Owned.Count playlists
+            @ActivePlaylists.Count() playlists
             · @result.Registry.Count unique songs
             · <strong>@NotLikedCount not yet liked</strong>
             · @AlreadyLikedCount already liked
@@ -81,6 +82,16 @@ else
         @if (NotLikedCount == 0)
         {
             <div class="card done">✔ Every song in your playlists is liked.</div>
+        }
+
+        @if (FullyLikedPlaylists.Count > 0)
+        {
+            <div class="actions bulk">
+                <span>@FullyLikedPlaylists.Count playlists are fully liked.</span>
+                <button class="secondary" disabled="@Busy" @onclick="IgnoreFullyLiked">
+                    Ignore them from now on
+                </button>
+            </div>
         }
 
         @if (likedLibrary is not null && likedLibrary.Duplicates.Count > 0)
@@ -151,29 +162,24 @@ else
             <p class="hint no-pad">✔ No song is liked more than once.</p>
         }
 
-        @foreach (var playlist in result.Owned)
+        @foreach (var playlist in ActivePlaylists)
         {
             var rows = BuildRows(playlist);
             var visible = rows.Where(IsVisible).ToList();
             var pending = PendingTracks(playlist);
             var selectedCount = pending.Count(IsSelected);
-            var isSkipped = skipped.Contains(playlist.Id);
 
             if ((IsFiltering || onlyNotLiked) && visible.Count == 0 && !messages.ContainsKey(playlist.Id))
             {
                 continue;
             }
 
-            <details class="playlist @(isSkipped ? "is-skipped" : null)" open="@IsFiltering">
+            <details class="playlist" open="@IsFiltering">
                 <summary>
                     <span class="name">@playlist.Name</span>
                     <span class="meta">
                         @playlist.Entries.Count songs
-                        @if (isSkipped)
-                        {
-                            <span class="badge muted">skipped</span>
-                        }
-                        else if (pending.Count == 0)
+                        @if (pending.Count == 0)
                         {
                             <span class="badge ok">✔ all liked</span>
                         }
@@ -184,28 +190,25 @@ else
                     </span>
                 </summary>
 
-                @if (pending.Count > 0 && !isSkipped)
-                {
-                    <div class="actions">
+                <div class="actions">
+                    @if (pending.Count > 0)
+                    {
                         <button class="primary" disabled="@(Busy || selectedCount == 0)"
                                 @onclick="() => LikeSelectedAsync(playlist)">
                             @(dryRun ? "Dry run: like" : "Like") @selectedCount selected
                         </button>
                         <button class="secondary" disabled="@Busy" @onclick="() => SetSelection(playlist, true)">Select all</button>
                         <button class="secondary" disabled="@Busy" @onclick="() => SetSelection(playlist, false)">Select none</button>
-                        <button class="secondary" disabled="@Busy" @onclick="() => ToggleSkip(playlist)">Skip playlist</button>
-                        @if (busyPlaylistId == playlist.Id)
-                        {
-                            <span class="status">@status</span>
-                        }
-                    </div>
-                }
-                else if (isSkipped)
-                {
-                    <div class="actions">
-                        <button class="secondary" disabled="@Busy" @onclick="() => ToggleSkip(playlist)">Undo skip</button>
-                    </div>
-                }
+                    }
+                    <button class="secondary" disabled="@Busy" @onclick="() => Ignore(playlist)"
+                            title="Hide this playlist and don't load it anymore">
+                        Ignore playlist
+                    </button>
+                    @if (busyPlaylistId == playlist.Id)
+                    {
+                        <span class="status">@status</span>
+                    }
+                </div>
 
                 @if (messages.TryGetValue(playlist.Id, out var message))
                 {
@@ -226,7 +229,7 @@ else
                             @foreach (var row in visible)
                             {
                                 var track = row.Entry.Track;
-                                var canSelect = !row.IsLiked && row.IsFirstInPlaylist && !isSkipped;
+                                var canSelect = !row.IsLiked && row.IsFirstInPlaylist;
 
                                 <tr class="@(row.IsLiked ? "liked" : !row.IsFirstInPlaylist ? "dup" : null)">
                                     <td class="sel">
@@ -250,6 +253,28 @@ else
                 {
                     <p class="hint">@playlist.SkippedNonTracks episodes, local files or unavailable items ignored.</p>
                 }
+            </details>
+        }
+
+        @if (IgnoredPlaylists.Count > 0)
+        {
+            <details class="playlist skipped">
+                <summary>
+                    <span class="name">Ignored by you</span>
+                    <span class="meta">@IgnoredPlaylists.Count playlists</span>
+                </summary>
+                <p class="hint">These playlists are not loaded. Include one again to see its songs.</p>
+                <ul>
+                    @foreach (var p in IgnoredPlaylists)
+                    {
+                        <li>
+                            @p.Name <span class="hint">@p.ItemCount songs</span>
+                            <button class="small secondary" disabled="@Busy" @onclick="() => IncludeAsync(p)">
+                                Include again
+                            </button>
+                        </li>
+                    }
+                </ul>
             </details>
         }
 
@@ -286,7 +311,6 @@ else
 
     // Songs the user unticked (by dedupe key). Everything not yet liked is selected by default.
     private readonly HashSet<string> deselected = new();
-    private readonly HashSet<string> skipped = new();
     private readonly Dictionary<string, string> messages = new();
 
     private bool loading;
@@ -304,8 +328,27 @@ else
 
     private bool IsFiltering => !string.IsNullOrWhiteSpace(filter);
 
+    /// <summary>Loaded playlists that are not ignored.</summary>
+    private IEnumerable<OwnedPlaylist> ActivePlaylists =>
+        result?.Owned.Where(p => !IgnoredStore.IsIgnored(p.Id)) ?? [];
+
+    private List<OwnedPlaylist> FullyLikedPlaylists =>
+        ActivePlaylists.Where(p => PendingTracks(p).Count == 0).ToList();
+
+    /// <summary>Ignored before loading (not loaded) plus playlists ignored during this session.</summary>
+    private List<IgnoredPlaylist> IgnoredPlaylists =>
+        result is null
+            ? []
+            : result.Ignored
+                .Where(p => IgnoredStore.IsIgnored(p.Id))
+                .Concat(result.Owned
+                    .Where(p => IgnoredStore.IsIgnored(p.Id))
+                    .Select(p => new IgnoredPlaylist(p.Id, p.Name, p.Entries.Count)))
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
     private IEnumerable<string> AllKeys =>
-        result?.Owned.SelectMany(p => p.Entries).Select(e => e.Track.DedupeKey).Distinct() ?? [];
+        ActivePlaylists.SelectMany(p => p.Entries).Select(e => e.Track.DedupeKey).Distinct();
 
     private int NotLikedCount => AllKeys.Count(k => likedKeys?.Contains(k) != true);
 
@@ -337,7 +380,6 @@ else
             likedKeys = library.Keys;
             likedLibrary = library;
             deselected.Clear();
-            skipped.Clear();
             messages.Clear();
             confirmUnlikeUri = null;
             dupMessage = null;
@@ -508,11 +550,25 @@ else
             SetSelected(track, selected);
     }
 
-    private void ToggleSkip(OwnedPlaylist playlist)
+    private void Ignore(OwnedPlaylist playlist)
     {
-        if (!skipped.Remove(playlist.Id))
-            skipped.Add(playlist.Id);
+        IgnoredStore.Ignore(playlist.Id, playlist.Name);
         messages.Remove(playlist.Id);
+    }
+
+    private void IgnoreFullyLiked()
+    {
+        foreach (var playlist in FullyLikedPlaylists)
+            Ignore(playlist);
+    }
+
+    private async Task IncludeAsync(IgnoredPlaylist playlist)
+    {
+        IgnoredStore.Include(playlist.Id);
+
+        // Playlists ignored in this session are still loaded; others need a reload to fetch their songs.
+        if (result?.Owned.Any(p => p.Id == playlist.Id) != true)
+            await LoadAsync();
     }
 
     private static string VersionInfo(LikedTrack version)

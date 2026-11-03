@@ -13,7 +13,9 @@ Local Blazor app (.NET 10) that goes through my Spotify playlists. See [PLAN.md]
 - Shows **duplicate liked songs**: songs liked more than once (e.g. album + single), with album, type and date liked
   and an **Unlike** button per version (with confirmation; the last version of a song always stays liked)
 - Per playlist: shows the songs not yet liked with checkboxes (all ticked by default),
-  **Like N selected**, **Select all/none**, **Skip playlist**
+  **Like N selected**, **Select all/none**, **Ignore playlist**
+- **Ignore** playlists you know are done (single playlist, or all fully liked playlists at once):
+  ignored playlists are remembered in `ignored-playlists.json` and not loaded anymore; **Include again** undoes it
 - Never likes a song twice: songs liked in one playlist disappear from the others
 - **Dry run** switch: shows what would be liked without changing anything
 - Every like and unlike is logged to `liked-log.tsv` (timestamp, action, URI, song, playlist/album) for review or undo
