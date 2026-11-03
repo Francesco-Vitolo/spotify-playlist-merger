@@ -92,7 +92,14 @@ else
                         <span class="badge">@likedLibrary.Duplicates.Count songs liked more than once</span>
                     </span>
                 </summary>
-                <p class="hint">Same title and artist liked in several versions, e.g. from the album and the single.</p>
+                <p class="hint">
+                    Same title and artist liked in several versions, e.g. from the album and the single.
+                    Unlike the versions you don't need; the last version of a song always stays liked.
+                </p>
+                @if (dupMessage is not null)
+                {
+                    <p class="message">@dupMessage</p>
+                }
                 <table>
                     <thead>
                         <tr><th>Title</th><th>Artist</th><th>Liked versions</th></tr>
@@ -112,6 +119,23 @@ else
                                                 <span class="hint">
                                                     @VersionInfo(version)
                                                 </span>
+                                                @if (confirmUnlikeUri == version.Track.Uri)
+                                                {
+                                                    <span class="confirm">
+                                                        Unlike this version?
+                                                        <button class="small danger" disabled="@Busy"
+                                                                @onclick="() => UnlikeAsync(group, version)">
+                                                            @(dryRun ? "Dry run: unlike" : "Yes, unlike")
+                                                        </button>
+                                                        <button class="small secondary" disabled="@Busy"
+                                                                @onclick="() => confirmUnlikeUri = null">Cancel</button>
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <button class="small secondary" disabled="@Busy"
+                                                            @onclick="() => confirmUnlikeUri = version.Track.Uri">Unlike</button>
+                                                }
                                             </li>
                                         }
                                     </ul>
@@ -256,6 +280,9 @@ else
     private PlaylistLoader.Result? result;
     private HashSet<string>? likedKeys;
     private LikedLibrary? likedLibrary;
+    private string? confirmUnlikeUri;
+    private string? dupMessage;
+    private bool unliking;
 
     // Songs the user unticked (by dedupe key). Everything not yet liked is selected by default.
     private readonly HashSet<string> deselected = new();
@@ -273,7 +300,7 @@ else
     private bool hideDuplicates;
     private bool dryRun;
 
-    private bool Busy => loading || busyPlaylistId is not null;
+    private bool Busy => loading || unliking || busyPlaylistId is not null;
 
     private bool IsFiltering => !string.IsNullOrWhiteSpace(filter);
 
@@ -312,6 +339,8 @@ else
             deselected.Clear();
             skipped.Clear();
             messages.Clear();
+            confirmUnlikeUri = null;
+            dupMessage = null;
         }
         catch (Exception ex) when (TryHandle(ex))
         {
@@ -364,6 +393,40 @@ else
         finally
         {
             busyPlaylistId = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UnlikeAsync(LikedDuplicateGroup group, LikedTrack version)
+    {
+        if (likedLibrary is null)
+            return;
+
+        confirmUnlikeUri = null;
+        var label = $"{version.Track} ({version.Track.Album ?? "unknown album"})";
+
+        if (dryRun)
+        {
+            dupMessage = $"Dry run: {label} would be unliked. Nothing was changed.";
+            return;
+        }
+
+        unliking = true;
+        error = null;
+        status = $"Unliking {label} …";
+        StateHasChanged();
+
+        try
+        {
+            await Library.UnlikeDuplicateAsync(likedLibrary, group, version);
+            dupMessage = $"✔ Unliked {label}.";
+        }
+        catch (Exception ex) when (TryHandle(ex))
+        {
+        }
+        finally
+        {
+            unliking = false;
             StateHasChanged();
         }
     }

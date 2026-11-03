@@ -45,7 +45,7 @@ public sealed class LibraryService(ISpotifyClient client, LikedLog log)
             .ThenBy(g => g.Title, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        return new LikedLibrary(keys, duplicates, liked.Count);
+        return new LikedLibrary(keys, duplicates) { Count = liked.Count };
     }
 
     /// <summary>
@@ -73,12 +73,32 @@ public sealed class LibraryService(ISpotifyClient client, LikedLog log)
             foreach (var track in batch)
                 likedKeys.Add(track.DedupeKey);
 
-            await log.AppendAsync(batch, playlistName, ct);
+            await log.AppendAsync(batch, "liked", playlistName, ct);
 
             likedCount += batch.Length;
             onProgress?.Invoke($"Liking songs … {likedCount}/{toLike.Count}");
         }
 
         return likedCount;
+    }
+
+    /// <summary>
+    /// Unlikes one version of a song that is liked more than once. Refuses to remove the last
+    /// remaining version, so the song itself always stays in Liked Songs.
+    /// </summary>
+    public async Task UnlikeDuplicateAsync(
+        LikedLibrary library, LikedDuplicateGroup group, LikedTrack version, CancellationToken ct = default)
+    {
+        if (group.Versions.Count < 2 || !group.Versions.Contains(version))
+            throw new InvalidOperationException("Only extra versions of a song liked more than once can be unliked.");
+
+        await client.RemoveAsync([version.Track.Uri], ct);
+        await log.AppendAsync([version.Track], "unliked", version.Track.Album ?? "", ct);
+
+        group.Versions.Remove(version);
+        library.Count--;
+
+        if (group.Versions.Count < 2)
+            library.Duplicates.Remove(group);
     }
 }

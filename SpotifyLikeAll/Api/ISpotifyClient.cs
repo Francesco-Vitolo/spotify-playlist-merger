@@ -16,4 +16,7 @@ public interface ISpotifyClient
 
     /// <summary>PUT /me/library – likes the given tracks (max <see cref="LibraryBatchSize"/>).</summary>
     Task SaveAsync(IReadOnlyList<string> uris, CancellationToken ct = default);
+
+    /// <summary>DELETE /me/library – unlikes the given tracks (max <see cref="LibraryBatchSize"/>).</summary>
+    Task RemoveAsync(IReadOnlyList<string> uris, CancellationToken ct = default);
 }

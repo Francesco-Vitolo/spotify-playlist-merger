@@ -51,9 +51,10 @@ public sealed record SkippedPlaylist(string Name, string OwnerName);
 public sealed record LikedTrack(Track Track, DateTimeOffset? AddedAt);
 
 /// <summary>The same song (title + artist) liked more than once, e.g. album and single version.</summary>
-public sealed record LikedDuplicateGroup(string Title, string Artists, IReadOnlyList<LikedTrack> Versions);
+public sealed record LikedDuplicateGroup(string Title, string Artists, List<LikedTrack> Versions);
 
-public sealed record LikedLibrary(
-    HashSet<string> Keys,
-    IReadOnlyList<LikedDuplicateGroup> Duplicates,
-    int Count);
+public sealed record LikedLibrary(HashSet<string> Keys, List<LikedDuplicateGroup> Duplicates)
+{
+    /// <summary>Number of tracks in Liked Songs (updated when the app likes or unlikes tracks).</summary>
+    public int Count { get; set; }
+}

@@ -44,6 +44,14 @@ public sealed class SpotifyClient(HttpClient http, SpotifyAuthService auth) : IS
         using var response = await SendAsync(HttpMethod.Put, $"me/library?uris={JoinUris(uris)}", ct);
     }
 
+    public async Task RemoveAsync(IReadOnlyList<string> uris, CancellationToken ct = default)
+    {
+        if (uris.Count == 0)
+            return;
+
+        using var response = await SendAsync(HttpMethod.Delete, $"me/library?uris={JoinUris(uris)}", ct);
+    }
+
     private static string JoinUris(IReadOnlyList<string> uris)
     {
         if (uris.Count > ISpotifyClient.LibraryBatchSize)

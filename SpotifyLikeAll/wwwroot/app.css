@@ -221,3 +221,9 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
 .versions li { padding: 1px 0; }
 .versions .hint { padding: 0 0 0 6px; }
 .hint.no-pad { padding: 0 0 12px; }
+
+button.small { padding: 2px 10px; font-size: 12px; margin-left: 8px; }
+.danger { background: var(--error); color: #fff; }
+.danger:hover:not(:disabled) { background: #f07070; }
+.confirm { color: var(--warn); font-size: 13px; margin-left: 8px; }
+.liked-dups > .message { padding-top: 0; }
