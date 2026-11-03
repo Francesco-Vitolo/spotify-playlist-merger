@@ -20,17 +20,20 @@ Goal: go through all of my Spotify playlists, show the songs in each playlist th
 
 ## Tech stack
 
-- .NET 10 console app
+- .NET 10 **Blazor Web App** (Interactive Server), running locally on `http://127.0.0.1:8888`
 - `HttpClient` (typed client) + `System.Text.Json`
-- `Microsoft.Extensions.Hosting` for DI, config (`appsettings.json`) and logging
-- `Spectre.Console` for tables and prompts (optional)
+- Built-in DI, config (`appsettings.json`, user secrets) and logging
 
 ## Project structure
 
 ```
 SpotifyLikeAll/
-  Program.cs                 host setup, CLI args (--dry-run)
+  Program.cs                 host setup, DI
   appsettings.json           ClientId, RedirectUri, BatchSize
+  Components/
+    App.razor, Routes.razor, Layout/MainLayout.razor
+    Pages/Home.razor         playlists, songs, duplicates, confirmation UI
+  wwwroot/app.css
   Auth/
     AuthService.cs           PKCE login flow
     PkceHelper.cs            code verifier / challenge
@@ -42,8 +45,9 @@ SpotifyLikeAll/
   Models/
     Playlist.cs, Track.cs, PlaylistItem.cs, Paging<T>.cs   (records)
   Services/
-    LikeAllService.cs        main workflow
-    ConsolePrompter.cs       confirmation UI
+    PlaylistLoader.cs        load owned playlists + songs
+    TrackRegistry.cs         dedupe songs across playlists
+    LikeAllService.cs        like workflow
 ```
 
 ## Steps
@@ -79,22 +83,14 @@ SpotifyLikeAll/
    - keep a global `HashSet<string>` of known liked URIs across playlists
    - check the rest with `CheckSavedAsync`
 4. [ ] If nothing is left, print `✔ all liked` and continue with the next playlist
-5. [ ] Otherwise show the not-yet-liked songs and ask for confirmation:
-   ```
-   Playlist "Road Trip" – 12 of 48 songs not yet liked
-    #  Artist           Title
-    1  ...              ...
-   Like these 12 songs? [y]es / [n]o-skip / [s]elect / [q]uit
-   ```
-   - `y` → like all listed songs
-   - `n` → skip this playlist
-   - `s` → `MultiSelectionPrompt` with all songs pre-selected; untick the ones to exclude
-   - `q` → stop and show the summary
-6. [ ] Save the confirmed songs in batches and add them to the liked set
-7. [ ] Print a summary: playlists processed, songs liked, playlists skipped (with reason)
+5. [ ] Otherwise show the not-yet-liked songs of the playlist in the Blazor UI:
+   - table with a checkbox per song, all pre-checked; untick the ones to exclude
+   - buttons per playlist: **Like selected** / **Skip**
+6. [ ] Save the confirmed songs in batches (progress shown in the UI) and add them to the liked set
+7. [ ] Show a summary: playlists processed, songs liked, playlists skipped (with reason)
 
 ### 5. Safety
-- [ ] `--dry-run`: only list songs, never call `PUT /me/library`
+- [ ] Dry-run switch in the UI: only list songs, never call `PUT /me/library`
 - [ ] Append every liked URI with a timestamp to `liked-log.txt` (for undo via `DELETE /me/library`)
 - [ ] Never like anything without an explicit confirmation per playlist
 

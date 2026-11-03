@@ -3,12 +3,16 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using SpotifyLikeAll.Services;
 
 namespace SpotifyLikeAll.Api;
 
-public sealed class SpotifyApiException(string message) : Exception(message);
+public sealed class SpotifyApiException(string message, HttpStatusCode? statusCode = null) : Exception(message)
+{
+    public HttpStatusCode? StatusCode { get; } = statusCode;
+}
 
-public sealed class SpotifyClient : ISpotifyClient
+public sealed class SpotifyClient(HttpClient http, TokenStore tokens) : ISpotifyClient
 {
     private const int PageSize = 50;
     private const int MaxRetries = 5;
@@ -18,17 +22,6 @@ public sealed class SpotifyClient : ISpotifyClient
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         PropertyNameCaseInsensitive = true,
     };
-
-    private readonly HttpClient _http;
-
-    public SpotifyClient(HttpClient http) => _http = http;
-
-    public static SpotifyClient Create(string accessToken)
-    {
-        var http = new HttpClient { BaseAddress = new Uri("https://api.spotify.com/v1/") };
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        return new SpotifyClient(http);
-    }
 
     public Task<UserDto> GetCurrentUserAsync(CancellationToken ct = default) =>
         GetAsync<UserDto>("me", ct);
@@ -56,26 +49,33 @@ public sealed class SpotifyClient : ISpotifyClient
 
     private async Task<T> GetAsync<T>(string url, CancellationToken ct)
     {
+        if (!tokens.HasToken)
+            throw new SpotifyApiException("No access token set.", HttpStatusCode.Unauthorized);
+
         for (var attempt = 1; ; attempt++)
         {
-            using var response = await _http.GetAsync(url, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+
+            using var response = await http.SendAsync(request, ct);
 
             if (response.StatusCode == HttpStatusCode.TooManyRequests && attempt <= MaxRetries)
             {
                 var delay = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(5);
-                Console.Error.WriteLine($"Rate limited, waiting {delay.TotalSeconds:0}s ...");
                 await Task.Delay(delay, ct);
                 continue;
             }
 
             if (response.StatusCode == HttpStatusCode.Unauthorized)
                 throw new SpotifyApiException(
-                    "401 Unauthorized: the access token is missing, invalid or expired (tokens last 1 hour).");
+                    "The access token is invalid or expired (tokens last 1 hour). Please set a new one.",
+                    HttpStatusCode.Unauthorized);
 
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(ct);
-                throw new SpotifyApiException($"{(int)response.StatusCode} {response.StatusCode} for {url}: {body}");
+                throw new SpotifyApiException(
+                    $"{(int)response.StatusCode} {response.StatusCode} for {url}: {body}", response.StatusCode);
             }
 
             return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct)

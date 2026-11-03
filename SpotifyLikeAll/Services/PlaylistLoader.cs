@@ -3,16 +3,23 @@ using SpotifyLikeAll.Models;
 
 namespace SpotifyLikeAll.Services;
 
-public sealed class PlaylistLoader(ISpotifyClient client, TrackRegistry registry)
+public sealed class PlaylistLoader(ISpotifyClient client)
 {
     public sealed record Result(
         UserDto Me,
         IReadOnlyList<OwnedPlaylist> Owned,
-        IReadOnlyList<SkippedPlaylist> NotOwned);
+        IReadOnlyList<SkippedPlaylist> NotOwned,
+        TrackRegistry Registry);
 
-    /// <summary>Loads all playlists owned by the current user together with their songs.</summary>
-    public async Task<Result> LoadOwnedPlaylistsAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Loads all playlists owned by the current user together with their songs.
+    /// Every song is registered in a fresh <see cref="TrackRegistry"/>, so duplicates
+    /// within and across playlists are marked and each song exists only once in
+    /// <see cref="TrackRegistry.UniqueTracks"/>.
+    /// </summary>
+    public async Task<Result> LoadOwnedPlaylistsAsync(Action<string>? onProgress = null, CancellationToken ct = default)
     {
+        var registry = new TrackRegistry();
         var me = await client.GetCurrentUserAsync(ct);
 
         var owned = new List<OwnedPlaylist>();
@@ -26,13 +33,14 @@ public sealed class PlaylistLoader(ISpotifyClient client, TrackRegistry registry
                 continue;
             }
 
-            owned.Add(await LoadPlaylistAsync(playlist, ct));
+            onProgress?.Invoke($"Loading \"{playlist.Name}\" ({owned.Count + 1}) …");
+            owned.Add(await LoadPlaylistAsync(playlist, registry, ct));
         }
 
-        return new Result(me, owned, notOwned);
+        return new Result(me, owned, notOwned, registry);
     }
 
-    private async Task<OwnedPlaylist> LoadPlaylistAsync(PlaylistDto playlist, CancellationToken ct)
+    private async Task<OwnedPlaylist> LoadPlaylistAsync(PlaylistDto playlist, TrackRegistry registry, CancellationToken ct)
     {
         var entries = new List<PlaylistTrackEntry>();
         var skipped = 0;

@@ -1,0 +1,203 @@
+@page "/"
+@rendermode InteractiveServer
+@inject TokenStore Tokens
+@inject PlaylistLoader Loader
+
+<PageTitle>Spotify Like All</PageTitle>
+
+@if (!Tokens.HasToken)
+{
+    <section class="card">
+        <h2>Access token</h2>
+        <p>
+            Paste a Spotify user access token with the scopes
+            <code>playlist-read-private</code> and <code>playlist-read-collaborative</code>.
+        </p>
+        <div class="row">
+            <input type="password" class="grow" placeholder="Access token" @bind="tokenInput" @bind:event="oninput" />
+            <button class="primary" @onclick="SaveToken" disabled="@string.IsNullOrWhiteSpace(tokenInput)">Use token</button>
+        </div>
+    </section>
+}
+else
+{
+    <div class="toolbar">
+        <button class="primary" @onclick="LoadAsync" disabled="@loading">
+            @(result is null ? "Load my playlists" : "Reload")
+        </button>
+
+        @if (result is not null && !loading)
+        {
+            <input type="search" placeholder="Filter by title or artist…" @bind="filter" @bind:event="oninput" />
+            <label class="check">
+                <input type="checkbox" @bind="hideDuplicates" /> Hide duplicates
+            </label>
+        }
+
+        @if (loading)
+        {
+            <span class="status">@status</span>
+        }
+
+        <button class="link" @onclick="ClearToken" disabled="@loading">Change token</button>
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="error">@error</div>
+    }
+
+    @if (result is not null)
+    {
+        <p class="summary">
+            Logged in as <strong>@(result.Me.DisplayName ?? result.Me.Id)</strong>
+            · @result.Owned.Count playlists
+            · @TotalSongs songs
+            · <strong>@result.Registry.Count unique</strong>
+            · @(TotalSongs - result.Registry.Count) duplicates
+        </p>
+
+        @foreach (var playlist in result.Owned)
+        {
+            var rows = VisibleRows(playlist).ToList();
+            if (IsFiltering && rows.Count == 0)
+            {
+                continue;
+            }
+
+            var duplicates = playlist.Entries.Count(e => e.Duplicate != DuplicateKind.None);
+
+            <details class="playlist" open="@IsFiltering">
+                <summary>
+                    <span class="name">@playlist.Name</span>
+                    <span class="meta">
+                        @playlist.Entries.Count songs
+                        @if (duplicates > 0)
+                        {
+                            <span class="badge">@duplicates duplicates</span>
+                        }
+                    </span>
+                </summary>
+
+                @if (rows.Count == 0)
+                {
+                    <p class="empty">No songs to show.</p>
+                }
+                else
+                {
+                    <table>
+                        <thead>
+                            <tr><th class="num">#</th><th>Title</th><th>Artist</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var (entry, index) in rows)
+                            {
+                                <tr class="@(entry.Duplicate == DuplicateKind.None ? null : "dup")">
+                                    <td class="num">@(index + 1)</td>
+                                    <td>@entry.Track.Name</td>
+                                    <td>@entry.Track.Artists</td>
+                                    <td class="note">@DuplicateNote(entry)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+
+                @if (playlist.SkippedNonTracks > 0)
+                {
+                    <p class="hint">@playlist.SkippedNonTracks episodes, local files or unavailable items ignored.</p>
+                }
+            </details>
+        }
+
+        @if (result.NotOwned.Count > 0)
+        {
+            <details class="playlist skipped">
+                <summary>
+                    <span class="name">Skipped – not owned by you</span>
+                    <span class="meta">@result.NotOwned.Count playlists</span>
+                </summary>
+                <ul>
+                    @foreach (var p in result.NotOwned)
+                    {
+                        <li>@p.Name <span class="hint">by @p.OwnerName</span></li>
+                    }
+                </ul>
+            </details>
+        }
+    }
+}
+
+@code {
+    private string? tokenInput;
+    private PlaylistLoader.Result? result;
+    private bool loading;
+    private string? status;
+    private string? error;
+    private bool hideDuplicates;
+    private string filter = "";
+
+    private int TotalSongs => result?.Owned.Sum(p => p.Entries.Count) ?? 0;
+
+    private bool IsFiltering => !string.IsNullOrWhiteSpace(filter);
+
+    private void SaveToken()
+    {
+        Tokens.AccessToken = tokenInput?.Trim();
+        tokenInput = null;
+        error = null;
+    }
+
+    private void ClearToken()
+    {
+        Tokens.AccessToken = null;
+        result = null;
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        status = "Loading playlists …";
+
+        try
+        {
+            result = await Loader.LoadOwnedPlaylistsAsync(message =>
+            {
+                status = message;
+                _ = InvokeAsync(StateHasChanged);
+            });
+        }
+        catch (SpotifyApiException ex)
+        {
+            error = ex.Message;
+            if (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                Tokens.AccessToken = null;
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            error = $"Network error: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private IEnumerable<(PlaylistTrackEntry Entry, int Index)> VisibleRows(OwnedPlaylist playlist) =>
+        playlist.Entries
+            .Select((entry, index) => (entry, index))
+            .Where(r => !hideDuplicates || r.entry.Duplicate == DuplicateKind.None)
+            .Where(r => !IsFiltering
+                        || r.entry.Track.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                        || r.entry.Track.Artists.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+    private static string DuplicateNote(PlaylistTrackEntry entry) => entry.Duplicate switch
+    {
+        DuplicateKind.SamePlaylist => "Duplicate in this playlist",
+        DuplicateKind.OtherPlaylist => $"Already in \"{entry.FirstSeenInPlaylist}\"",
+        _ => "",
+    };
+}
