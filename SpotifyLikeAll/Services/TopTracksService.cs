@@ -10,7 +10,9 @@ namespace SpotifyLikeAll.Services;
 public sealed class TopTracksService(ISpotifyClient client, AppState state)
 {
     public const int TopCount = 10;
-    private const int MaxSearchRequests = 3;
+    // Search pages can be small (Spotify may return 5 instead of 10) and many results are filtered out
+    // (features, repeated titles), so keep paging until 10 songs are found or results run out.
+    private const int MaxSearchRequests = 8;
 
     public async Task<IReadOnlyList<Track>> GetTopTracksAsync(ArtistSummary artist, CancellationToken ct = default)
     {
@@ -21,9 +23,14 @@ public sealed class TopTracksService(ISpotifyClient client, AppState state)
         var result = new List<Track>();
         var seen = new HashSet<string>();
 
+        var offset = 0;
         for (var request = 0; request < MaxSearchRequests && result.Count < TopCount; request++)
         {
-            var items = await client.SearchTracksAsync(query, offset: request * 10, ct);
+            var items = await client.SearchTracksAsync(query, offset, ct);
+            if (items.Count == 0)
+                break; // no more results
+
+            offset += items.Count;
 
             foreach (var dto in items)
             {
@@ -42,9 +49,6 @@ public sealed class TopTracksService(ISpotifyClient client, AppState state)
                 if (result.Count == TopCount)
                     break;
             }
-
-            if (items.Count < 10)
-                break; // no more results
         }
 
         state.TopTracks[artist.Id] = result;
