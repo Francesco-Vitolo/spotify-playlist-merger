@@ -227,3 +227,21 @@ button.small { padding: 2px 10px; font-size: 12px; margin-left: 8px; }
 .danger:hover:not(:disabled) { background: #f07070; }
 .confirm { color: var(--warn); font-size: 13px; margin-left: 8px; }
 .liked-dups > .message { padding-top: 0; }
+
+.topbar { display: flex; align-items: center; gap: 32px; }
+.topbar nav { display: flex; gap: 20px; }
+.topbar nav a { color: var(--muted); text-decoration: none; font-weight: 600; }
+.topbar nav a:hover { color: var(--text); }
+.topbar nav a.active { color: var(--accent); }
+
+.artist-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+}
+.artist-row .caret { color: var(--muted); margin-right: 10px; width: 10px; }
+.artist-row .name { font-weight: 600; flex: 1; }
+.artist-row .meta { color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.hint.inline { padding: 0 0 0 6px; }

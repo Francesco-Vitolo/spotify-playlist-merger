@@ -77,7 +77,14 @@ public sealed class SavedTrackDto
 
 public sealed class ArtistDto
 {
+    public string? Id { get; init; }
     public string Name { get; init; } = "";
+}
+
+/// <summary>Response of GET /search?type=track.</summary>
+public sealed class SearchResponseDto
+{
+    public PagingDto<TrackDto>? Tracks { get; init; }
 }
 
 public sealed class ExternalIdsDto

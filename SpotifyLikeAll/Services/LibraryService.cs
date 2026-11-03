@@ -15,6 +15,7 @@ public sealed class LibraryService(ISpotifyClient client, LikedLog log)
     public async Task<LikedLibrary> LoadLikedLibraryAsync(Action<string>? onProgress = null, CancellationToken ct = default)
     {
         var liked = new List<LikedTrack>();
+        var artistCounts = new Dictionary<string, (string Name, int Count)>();
 
         await foreach (var saved in client.GetSavedTracksAsync(ct))
         {
@@ -26,6 +27,16 @@ public sealed class LibraryService(ISpotifyClient client, LikedLog log)
             }
 
             liked.Add(new LikedTrack(Track.FromDto(content), saved.AddedAt));
+
+            foreach (var artist in content.Artists ?? [])
+            {
+                if (string.IsNullOrEmpty(artist.Id))
+                    continue;
+
+                artistCounts[artist.Id] = artistCounts.TryGetValue(artist.Id, out var entry)
+                    ? (entry.Name, entry.Count + 1)
+                    : (artist.Name, 1);
+            }
 
             if (liked.Count % 100 == 0)
                 onProgress?.Invoke($"Loading liked songs … {liked.Count}");
@@ -45,7 +56,13 @@ public sealed class LibraryService(ISpotifyClient client, LikedLog log)
             .ThenBy(g => g.Title, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        return new LikedLibrary(keys, duplicates) { Count = liked.Count };
+        var artists = artistCounts
+            .Select(a => new ArtistSummary(a.Key, a.Value.Name, a.Value.Count))
+            .OrderByDescending(a => a.LikedCount)
+            .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new LikedLibrary(keys, duplicates, artists) { Count = liked.Count };
     }
 
     /// <summary>

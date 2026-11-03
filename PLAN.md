@@ -89,6 +89,7 @@ SpotifyLikeAll/
 7. [x] Show a summary: playlists processed, songs liked, playlists skipped (with reason)
 8. [x] Show duplicate liked songs (same title + artist liked more than once, e.g. album and single)
 9. [x] Unlike extra versions of duplicate liked songs (`DELETE /me/library`, confirmation, last version is kept)
+10. [x] Artists page: artists from Liked Songs, top 10 songs per artist via search (approximation), like them
 
 ### 5. Safety
 - [x] Dry-run switch in the UI: only list songs, never call `PUT /me/library`

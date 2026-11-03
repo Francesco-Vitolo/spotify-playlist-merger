@@ -14,6 +14,9 @@ public interface ISpotifyClient
     /// <summary>GET /me/tracks – all songs in Liked Songs (paged).</summary>
     IAsyncEnumerable<SavedTrackDto> GetSavedTracksAsync(CancellationToken ct = default);
 
+    /// <summary>GET /search?type=track – max 10 results per request since Feb 2026.</summary>
+    Task<IReadOnlyList<TrackDto>> SearchTracksAsync(string query, int offset = 0, CancellationToken ct = default);
+
     /// <summary>PUT /me/library – likes the given tracks (max <see cref="LibraryBatchSize"/>).</summary>
     Task SaveAsync(IReadOnlyList<string> uris, CancellationToken ct = default);
 

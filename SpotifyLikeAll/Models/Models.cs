@@ -53,7 +53,13 @@ public sealed record LikedTrack(Track Track, DateTimeOffset? AddedAt);
 /// <summary>The same song (title + artist) liked more than once, e.g. album and single version.</summary>
 public sealed record LikedDuplicateGroup(string Title, string Artists, List<LikedTrack> Versions);
 
-public sealed record LikedLibrary(HashSet<string> Keys, List<LikedDuplicateGroup> Duplicates)
+/// <summary>An artist credited on at least one liked song.</summary>
+public sealed record ArtistSummary(string Id, string Name, int LikedCount);
+
+public sealed record LikedLibrary(
+    HashSet<string> Keys,
+    List<LikedDuplicateGroup> Duplicates,
+    List<ArtistSummary> Artists)
 {
     /// <summary>Number of tracks in Liked Songs (updated when the app likes or unlikes tracks).</summary>
     public int Count { get; set; }

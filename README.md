@@ -17,6 +17,10 @@ Local Blazor app (.NET 10) that goes through my Spotify playlists. See [PLAN.md]
 - Never likes a song twice: songs liked in one playlist disappear from the others
 - **Dry run** switch: shows what would be liked without changing anything
 - Every like and unlike is logged to `liked-log.tsv` (timestamp, action, URI, song, playlist/album) for review or undo
+- **Artists** page: all artists in Liked Songs (with number of liked songs); click an artist to see
+  their top 10 songs and like them (single song or all not yet liked). Top songs come from Spotify search
+  (the official top-tracks endpoint was removed in Feb 2026), so they follow search relevance, not an
+  official ranking, and may include live versions or remixes
 - Filter by title/artist, "only not yet liked" (default) and hide duplicates
 - Ignores podcast episodes, local files and unavailable items
 - Retries automatically on rate limits (HTTP 429)

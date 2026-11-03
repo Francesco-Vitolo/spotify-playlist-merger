@@ -1,0 +1,302 @@
+@page "/artists"
+@rendermode InteractiveServer
+@inject SpotifyAuthService Auth
+@inject LibraryService Library
+@inject TopTracksService TopTracks
+
+<PageTitle>Artists – Spotify Like All</PageTitle>
+
+@if (!Auth.IsConfigured || !Auth.IsLoggedIn)
+{
+    <section class="card">
+        <p>Please <a class="link" href="/" data-enhance-nav="false">log in with Spotify</a> first.</p>
+    </section>
+}
+else
+{
+    <div class="toolbar">
+        <button class="primary" @onclick="LoadAsync" disabled="@Busy">
+            @(loading ? "Loading …" : "Reload")
+        </button>
+
+        @if (library is not null && !loading)
+        {
+            <input type="search" placeholder="Filter artists…" @bind="filter" @bind:event="oninput" />
+            <label class="check dry-run"><input type="checkbox" @bind="dryRun" /> Dry run</label>
+        }
+
+        @if (Busy)
+        {
+            <span class="status">@status</span>
+        }
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="error">@error</div>
+    }
+
+    @if (library is not null)
+    {
+        <p class="summary">
+            <strong>@library.Artists.Count artists</strong> in your Liked Songs (@library.Count songs)
+            @if (likedThisSession > 0)
+            {
+                <span> · <strong class="ok">@likedThisSession liked in this session</strong></span>
+            }
+        </p>
+        <p class="hint no-pad">
+            Top songs come from Spotify search, ordered by Spotify's relevance – not an official ranking.
+            They can include live versions or remixes. Only songs where the artist is the main artist are shown.
+        </p>
+
+        @foreach (var artist in VisibleArtists.Take(shownCount))
+        {
+            var isOpen = expanded.Contains(artist.Id);
+            topTracks.TryGetValue(artist.Id, out var tracks);
+
+            <div class="playlist">
+                <div class="artist-row" @onclick="() => ToggleAsync(artist)">
+                    <span class="caret">@(isOpen ? "▾" : "▸")</span>
+                    <span class="name">@artist.Name</span>
+                    <span class="meta">
+                        @artist.LikedCount liked
+                        @if (tracks is not null)
+                        {
+                            var notLiked = NotLiked(tracks).Count;
+                            if (notLiked == 0)
+                            {
+                                <span class="badge ok">✔ top @tracks.Count liked</span>
+                            }
+                            else
+                            {
+                                <span class="badge">@notLiked of top @tracks.Count not liked</span>
+                            }
+                        }
+                    </span>
+                </div>
+
+                @if (isOpen)
+                {
+                    if (loadingArtists.Contains(artist.Id))
+                    {
+                        <p class="hint">Searching top songs …</p>
+                    }
+                    else if (tracks is null)
+                    {
+                        <p class="hint">Could not load top songs.</p>
+                    }
+                    else if (tracks.Count == 0)
+                    {
+                        <p class="hint">Spotify search returned no songs with @artist.Name as main artist.</p>
+                    }
+                    else
+                    {
+                        var notLiked = NotLiked(tracks);
+                        if (notLiked.Count > 0)
+                        {
+                            <div class="actions">
+                                <button class="primary" disabled="@Busy" @onclick="() => LikeAsync(artist, notLiked)">
+                                    @(dryRun ? "Dry run: like" : "Like") all @notLiked.Count not yet liked
+                                </button>
+                                @if (busyArtistId == artist.Id)
+                                {
+                                    <span class="status">@status</span>
+                                }
+                            </div>
+                        }
+
+                        if (messages.TryGetValue(artist.Id, out var message))
+                        {
+                            <p class="message">@message</p>
+                        }
+
+                        <table>
+                            <thead>
+                                <tr><th class="num">#</th><th>Title</th><th>Album</th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                @for (var i = 0; i < tracks.Count; i++)
+                                {
+                                    var track = tracks[i];
+                                    var isLiked = IsLiked(track);
+
+                                    <tr class="@(isLiked ? "liked" : null)">
+                                        <td class="num">@(i + 1)</td>
+                                        <td>@track.Name</td>
+                                        <td>@track.Album <span class="hint inline">@track.AlbumType</span></td>
+                                        <td class="note">
+                                            @if (isLiked)
+                                            {
+                                                <span>♥ Liked</span>
+                                            }
+                                            else
+                                            {
+                                                <button class="small secondary" disabled="@Busy"
+                                                        @onclick="() => LikeAsync(artist, [track])">
+                                                    @(dryRun ? "Dry run: like" : "Like")
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+            </div>
+        }
+
+        @if (VisibleArtists.Count() > shownCount)
+        {
+            <button class="secondary" @onclick="() => shownCount += PageSize">
+                Show more artists (@(VisibleArtists.Count() - shownCount) left)
+            </button>
+        }
+    }
+}
+
+@code {
+    private const int PageSize = 50;
+
+    private LikedLibrary? library;
+    private readonly HashSet<string> expanded = new();
+    private readonly HashSet<string> loadingArtists = new();
+    private readonly Dictionary<string, IReadOnlyList<Track>> topTracks = new();
+    private readonly Dictionary<string, string> messages = new();
+
+    private bool loading;
+    private string? busyArtistId;
+    private string? status;
+    private string? error;
+    private string filter = "";
+    private bool dryRun;
+    private int shownCount = PageSize;
+    private int likedThisSession;
+
+    private bool Busy => loading || busyArtistId is not null;
+
+    private IEnumerable<ArtistSummary> VisibleArtists =>
+        library?.Artists.Where(a => string.IsNullOrWhiteSpace(filter)
+                                    || a.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+        ?? [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Auth.IsConfigured && Auth.IsLoggedIn && library is null)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        status = "Loading liked songs …";
+        StateHasChanged();
+
+        try
+        {
+            library = await Library.LoadLikedLibraryAsync(ReportProgress);
+            messages.Clear();
+            shownCount = PageSize;
+        }
+        catch (Exception ex) when (TryHandle(ex))
+        {
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleAsync(ArtistSummary artist)
+    {
+        if (expanded.Remove(artist.Id))
+            return;
+
+        expanded.Add(artist.Id);
+        if (topTracks.ContainsKey(artist.Id))
+            return;
+
+        loadingArtists.Add(artist.Id);
+        try
+        {
+            topTracks[artist.Id] = await TopTracks.GetTopTracksAsync(artist);
+        }
+        catch (Exception ex) when (TryHandle(ex))
+        {
+        }
+        finally
+        {
+            loadingArtists.Remove(artist.Id);
+        }
+    }
+
+    private async Task LikeAsync(ArtistSummary artist, IReadOnlyList<Track> tracks)
+    {
+        if (library is null || tracks.Count == 0)
+            return;
+
+        if (dryRun)
+        {
+            messages[artist.Id] = $"Dry run: {tracks.Count} songs would be liked. Nothing was changed.";
+            return;
+        }
+
+        busyArtistId = artist.Id;
+        error = null;
+        status = $"Liking songs … 0/{tracks.Count}";
+        messages.Remove(artist.Id);
+        StateHasChanged();
+
+        var before = library.Keys.Count;
+        try
+        {
+            var count = await Library.LikeAsync(tracks, $"Top songs: {artist.Name}", library.Keys, ReportProgress);
+            messages[artist.Id] = count == 1 ? "✔ Liked 1 song." : $"✔ Liked {count} songs.";
+        }
+        catch (Exception ex) when (TryHandle(ex))
+        {
+        }
+        finally
+        {
+            var added = library.Keys.Count - before;
+            likedThisSession += added;
+            library.Count += added;
+            busyArtistId = null;
+            StateHasChanged();
+        }
+    }
+
+    private bool IsLiked(Track track) => library?.Keys.Contains(track.DedupeKey) == true;
+
+    private List<Track> NotLiked(IReadOnlyList<Track> tracks) => tracks.Where(t => !IsLiked(t)).ToList();
+
+    private void ReportProgress(string message)
+    {
+        status = message;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private bool TryHandle(Exception ex)
+    {
+        switch (ex)
+        {
+            case NotLoggedInException:
+                library = null;
+                error = ex.Message + " Go to Playlists to log in again.";
+                return true;
+            case SpotifyAuthException or SpotifyApiException:
+                error = ex.Message;
+                return true;
+            case HttpRequestException:
+                error = $"Network error: {ex.Message}";
+                return true;
+            default:
+                return false;
+        }
+    }
+}

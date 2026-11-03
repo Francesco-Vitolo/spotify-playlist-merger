@@ -36,6 +36,15 @@ public sealed class SpotifyClient(HttpClient http, SpotifyAuthService auth) : IS
     public IAsyncEnumerable<SavedTrackDto> GetSavedTracksAsync(CancellationToken ct = default) =>
         GetAllPagesAsync<SavedTrackDto>($"me/tracks?limit={PageSize}", ct);
 
+    public async Task<IReadOnlyList<TrackDto>> SearchTracksAsync(
+        string query, int offset = 0, CancellationToken ct = default)
+    {
+        // limit max is 10 since Feb 2026; market=from_token returns versions playable in the user's country.
+        var url = $"search?q={Uri.EscapeDataString(query)}&type=track&limit=10&offset={offset}&market=from_token";
+        var response = await GetAsync<SearchResponseDto>(url, ct);
+        return response.Tracks?.Items ?? [];
+    }
+
     public async Task SaveAsync(IReadOnlyList<string> uris, CancellationToken ct = default)
     {
         if (uris.Count == 0)
