@@ -77,7 +77,7 @@ SpotifyLikeAll/
 1. [x] Load all playlists; mark playlists without readable items as *skipped (not owned/collaborative)*
 2. [x] For each playlist, load items and keep only real tracks:
    - skip episodes, `is_local` files and null items
-   - remove duplicates with `DistinctBy(t => t.Uri)`
+   - remove duplicates (same title + artist, case-insensitive)
 3. [x] Remove tracks that are already liked:
    - keep a global `HashSet<string>` of known liked URIs across playlists
    - check the rest with `CheckSavedAsync`
@@ -87,6 +87,7 @@ SpotifyLikeAll/
    - buttons per playlist: **Like selected** / **Skip**
 6. [x] Save the confirmed songs in batches (progress shown in the UI) and add them to the liked set
 7. [x] Show a summary: playlists processed, songs liked, playlists skipped (with reason)
+8. [x] Show duplicate liked songs (same title + artist liked more than once, e.g. album and single)
 
 ### 5. Safety
 - [x] Dry-run switch in the UI: only list songs, never call `PUT /me/library`

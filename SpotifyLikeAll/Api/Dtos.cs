@@ -53,7 +53,26 @@ public sealed class TrackDto
     public string Type { get; init; } = "";
     public bool IsLocal { get; init; }
     public List<ArtistDto>? Artists { get; init; }
+    public AlbumDto? Album { get; init; }
     public ExternalIdsDto? ExternalIds { get; init; }
+}
+
+public sealed class AlbumDto
+{
+    public string? Name { get; init; }
+
+    /// <summary>"album", "single" or "compilation".</summary>
+    public string? AlbumType { get; init; }
+}
+
+/// <summary>Item of GET /me/tracks (Liked Songs).</summary>
+public sealed class SavedTrackDto
+{
+    public DateTimeOffset? AddedAt { get; init; }
+    public TrackDto? Track { get; init; }
+    public TrackDto? Item { get; init; }
+
+    public TrackDto? Content => Track ?? Item;
 }
 
 public sealed class ArtistDto

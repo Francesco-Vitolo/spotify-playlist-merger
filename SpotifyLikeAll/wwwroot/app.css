@@ -214,3 +214,10 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
 }
 
 #blazor-error-ui .reload { color: #fff; margin-left: 8px; }
+
+.liked-dups { border-left: 3px solid var(--warn); }
+.liked-dups > .hint { padding-top: 0; }
+.versions { margin: 0; padding-left: 18px; }
+.versions li { padding: 1px 0; }
+.versions .hint { padding: 0 0 0 6px; }
+.hint.no-pad { padding: 0 0 12px; }

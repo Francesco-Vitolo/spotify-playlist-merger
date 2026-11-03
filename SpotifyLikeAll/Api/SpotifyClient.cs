@@ -33,13 +33,8 @@ public sealed class SpotifyClient(HttpClient http, SpotifyAuthService auth) : IS
         GetAllPagesAsync<PlaylistItemDto>(
             $"playlists/{Uri.EscapeDataString(playlistId)}/items?limit={PageSize}&additional_types=track", ct);
 
-    public async Task<bool[]> CheckSavedAsync(IReadOnlyList<string> uris, CancellationToken ct = default)
-    {
-        if (uris.Count == 0)
-            return [];
-
-        return await GetAsync<bool[]>($"me/library/contains?uris={JoinUris(uris)}", ct);
-    }
+    public IAsyncEnumerable<SavedTrackDto> GetSavedTracksAsync(CancellationToken ct = default) =>
+        GetAllPagesAsync<SavedTrackDto>($"me/tracks?limit={PageSize}", ct);
 
     public async Task SaveAsync(IReadOnlyList<string> uris, CancellationToken ct = default)
     {

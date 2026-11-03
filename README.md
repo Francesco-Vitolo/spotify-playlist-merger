@@ -7,8 +7,10 @@ Local Blazor app (.NET 10) that goes through my Spotify playlists. See [PLAN.md]
 - **Log in with Spotify** once; the app keeps the login for up to 180 days and renews the access token automatically
 - Loads all playlists **owned by me** automatically after login (followed playlists are listed as skipped)
 - Shows every playlist with its songs (expand a playlist to see the table)
-- Detects duplicates within a playlist and across playlists (by ISRC, falling back to the Spotify URI)
-- Checks which songs are already liked (a song counts as liked if any version of it is liked)
+- Duplicates = same title and same artist(s) (case-insensitive), so album and single versions count as one song;
+  detected within a playlist, across playlists and in Liked Songs
+- Loads Liked Songs and checks which playlist songs are already liked (a song counts as liked if any version of it is liked)
+- Shows **duplicate liked songs**: songs liked more than once (e.g. album + single), with album, type and date liked
 - Per playlist: shows the songs not yet liked with checkboxes (all ticked by default),
   **Like N selected**, **Select all/none**, **Skip playlist**
 - Never likes a song twice: songs liked in one playlist disappear from the others

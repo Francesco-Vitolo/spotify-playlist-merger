@@ -57,13 +57,7 @@ public sealed class PlaylistLoader(ISpotifyClient client)
                 continue;
             }
 
-            var track = new Track(
-                content.Uri,
-                content.Name,
-                string.Join(", ", (content.Artists ?? []).Select(a => a.Name)),
-                content.ExternalIds?.Isrc);
-
-            entries.Add(registry.Register(track, playlist.Id, playlist.Name));
+            entries.Add(registry.Register(Track.FromDto(content), playlist.Id, playlist.Name));
         }
 
         return new OwnedPlaylist(playlist.Id, playlist.Name, entries, skipped);

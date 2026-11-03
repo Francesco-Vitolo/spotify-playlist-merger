@@ -3,41 +3,49 @@ using SpotifyLikeAll.Models;
 
 namespace SpotifyLikeAll.Services;
 
-/// <summary>Checks which songs are already liked and likes new ones without ever liking a song twice.</summary>
+/// <summary>Reads Liked Songs and likes new songs without ever liking a song (title + artist) twice.</summary>
 public sealed class LibraryService(ISpotifyClient client, LikedLog log)
 {
     private const int BatchSize = ISpotifyClient.LibraryBatchSize;
 
     /// <summary>
-    /// Returns the dedupe keys of all songs that are already liked. Every URI is checked, including
-    /// other versions of the same recording, so a song counts as liked if any of its versions is liked.
+    /// Loads all Liked Songs. Returns the dedupe keys (title + artist) of every liked song, so a playlist
+    /// song counts as liked if any version of it is liked, plus the songs that are liked more than once.
     /// </summary>
-    public async Task<HashSet<string>> GetLikedKeysAsync(
-        IEnumerable<OwnedPlaylist> playlists, Action<string>? onProgress = null, CancellationToken ct = default)
+    public async Task<LikedLibrary> LoadLikedLibraryAsync(Action<string>? onProgress = null, CancellationToken ct = default)
     {
-        var tracks = playlists
-            .SelectMany(p => p.Entries)
-            .Select(e => e.Track)
-            .DistinctBy(t => t.Uri)
-            .ToList();
+        var liked = new List<LikedTrack>();
 
-        var liked = new HashSet<string>();
-        var checkedCount = 0;
-
-        foreach (var batch in tracks.Chunk(BatchSize))
+        await foreach (var saved in client.GetSavedTracksAsync(ct))
         {
-            var flags = await client.CheckSavedAsync(batch.Select(t => t.Uri).ToList(), ct);
-            for (var i = 0; i < batch.Length && i < flags.Length; i++)
+            var content = saved.Content;
+            if (content is null || content.IsLocal || string.IsNullOrEmpty(content.Uri) ||
+                (content.Type.Length > 0 && content.Type != "track"))
             {
-                if (flags[i])
-                    liked.Add(batch[i].DedupeKey);
+                continue;
             }
 
-            checkedCount += batch.Length;
-            onProgress?.Invoke($"Checking liked songs … {checkedCount}/{tracks.Count}");
+            liked.Add(new LikedTrack(Track.FromDto(content), saved.AddedAt));
+
+            if (liked.Count % 100 == 0)
+                onProgress?.Invoke($"Loading liked songs … {liked.Count}");
         }
 
-        return liked;
+        var keys = liked.Select(l => l.Track.DedupeKey).ToHashSet();
+
+        var duplicates = liked
+            .GroupBy(l => l.Track.DedupeKey)
+            .Where(g => g.Select(l => l.Track.Uri).Distinct().Count() > 1)
+            .Select(g =>
+            {
+                var versions = g.OrderBy(l => l.AddedAt).ToList();
+                return new LikedDuplicateGroup(versions[0].Track.Name, versions[0].Track.Artists, versions);
+            })
+            .OrderBy(g => g.Artists, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(g => g.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new LikedLibrary(keys, duplicates, liked.Count);
     }
 
     /// <summary>

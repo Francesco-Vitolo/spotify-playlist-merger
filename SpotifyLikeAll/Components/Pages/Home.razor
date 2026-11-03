@@ -68,6 +68,10 @@ else
             · @result.Registry.Count unique songs
             · <strong>@NotLikedCount not yet liked</strong>
             · @AlreadyLikedCount already liked
+            @if (likedLibrary is not null)
+            {
+                <span> · @likedLibrary.Count songs in Liked Songs</span>
+            }
             @if (likedThisSession > 0)
             {
                 <span> · <strong class="ok">@likedThisSession liked in this session</strong></span>
@@ -77,6 +81,50 @@ else
         @if (NotLikedCount == 0)
         {
             <div class="card done">✔ Every song in your playlists is liked.</div>
+        }
+
+        @if (likedLibrary is not null && likedLibrary.Duplicates.Count > 0)
+        {
+            <details class="playlist liked-dups">
+                <summary>
+                    <span class="name">Duplicate liked songs</span>
+                    <span class="meta">
+                        <span class="badge">@likedLibrary.Duplicates.Count songs liked more than once</span>
+                    </span>
+                </summary>
+                <p class="hint">Same title and artist liked in several versions, e.g. from the album and the single.</p>
+                <table>
+                    <thead>
+                        <tr><th>Title</th><th>Artist</th><th>Liked versions</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var group in likedLibrary.Duplicates)
+                        {
+                            <tr>
+                                <td>@group.Title</td>
+                                <td>@group.Artists</td>
+                                <td>
+                                    <ul class="versions">
+                                        @foreach (var version in group.Versions)
+                                        {
+                                            <li>
+                                                @(version.Track.Album ?? "Unknown album")
+                                                <span class="hint">
+                                                    @VersionInfo(version)
+                                                </span>
+                                            </li>
+                                        }
+                                    </ul>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </details>
+        }
+        else if (likedLibrary is not null)
+        {
+            <p class="hint no-pad">✔ No song is liked more than once.</p>
         }
 
         @foreach (var playlist in result.Owned)
@@ -207,6 +255,7 @@ else
 
     private PlaylistLoader.Result? result;
     private HashSet<string>? likedKeys;
+    private LikedLibrary? likedLibrary;
 
     // Songs the user unticked (by dedupe key). Everything not yet liked is selected by default.
     private readonly HashSet<string> deselected = new();
@@ -254,10 +303,12 @@ else
         try
         {
             var loaded = await Loader.LoadOwnedPlaylistsAsync(ReportProgress);
-            var liked = await Library.GetLikedKeysAsync(loaded.Owned, ReportProgress);
+            ReportProgress("Loading liked songs …");
+            var library = await Library.LoadLikedLibraryAsync(ReportProgress);
 
             result = loaded;
-            likedKeys = liked;
+            likedKeys = library.Keys;
+            likedLibrary = library;
             deselected.Clear();
             skipped.Clear();
             messages.Clear();
@@ -331,6 +382,7 @@ else
                 // Session expired or revoked: the page falls back to the login card.
                 result = null;
                 likedKeys = null;
+                likedLibrary = null;
                 error = ex.Message;
                 return true;
             case SpotifyAuthException or SpotifyApiException:
@@ -398,6 +450,16 @@ else
         if (!skipped.Remove(playlist.Id))
             skipped.Add(playlist.Id);
         messages.Remove(playlist.Id);
+    }
+
+    private static string VersionInfo(LikedTrack version)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(version.Track.AlbumType))
+            parts.Add(version.Track.AlbumType);
+        if (version.AddedAt is { } added)
+            parts.Add($"liked {added.ToLocalTime():d}");
+        return string.Join(" · ", parts);
     }
 
     private static string Note(Row row)
